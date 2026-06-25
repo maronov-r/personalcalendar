@@ -66,6 +66,11 @@
       <span class="topbar-title" id="profile-title">Contact</span>
     </div>
 
+    <div class="topbar-controls hidden" id="tasks-controls">
+      <span class="topbar-title">Tasks</span>
+      <button class="pill-btn pill-btn-accent" id="btn-add-task">+ Add task</button>
+    </div>
+
     <div class="topbar-controls hidden" id="settings-controls">
       <span class="topbar-title">Settings</span>
     </div>
@@ -120,6 +125,37 @@
 
     <section class="screen hidden" id="screen-contact-profile">
       <div id="profile-content"></div>
+    </section>
+
+    <section class="screen hidden" id="screen-tasks">
+      <div class="empty-state hidden" id="tasks-empty">
+        <div class="empty-orbit"></div>
+        <p class="empty-title">No tasks yet</p>
+        <p class="empty-sub">Add tasks to track what needs doing — give them a due date and they'll show up on your calendar too.</p>
+      </div>
+
+      <div id="tasks-list-view">
+        <div class="crm-section" id="section-tasks-overdue">
+          <h2 class="crm-heading crm-heading-overdue">Overdue</h2>
+          <div class="contact-list" id="list-tasks-overdue"></div>
+        </div>
+        <div class="crm-section" id="section-tasks-today">
+          <h2 class="crm-heading crm-heading-good">Today</h2>
+          <div class="contact-list" id="list-tasks-today"></div>
+        </div>
+        <div class="crm-section" id="section-tasks-upcoming">
+          <h2 class="crm-heading crm-heading-upcoming">Upcoming</h2>
+          <div class="contact-list" id="list-tasks-upcoming"></div>
+        </div>
+        <div class="crm-section" id="section-tasks-nodate">
+          <h2 class="crm-heading">No date</h2>
+          <div class="contact-list" id="list-tasks-nodate"></div>
+        </div>
+        <div class="crm-section" id="section-tasks-done">
+          <h2 class="crm-heading">Completed</h2>
+          <div class="contact-list" id="list-tasks-done"></div>
+        </div>
+      </div>
     </section>
 
     <section class="screen hidden" id="screen-settings">
@@ -326,6 +362,9 @@
     <button class="nav-btn nav-btn-add" id="btn-quick-add" aria-label="Quick add">
       <span class="nav-add-icon">+</span>
     </button>
+    <button class="nav-btn" data-screen="tasks">
+      <span class="nav-icon">✓</span><span class="nav-label">Tasks</span>
+    </button>
     <button class="nav-btn" data-screen="settings">
       <span class="nav-icon">⚙️</span><span class="nav-label">Settings</span>
     </button>
@@ -383,6 +422,45 @@
           <button type="button" class="text-btn text-btn-danger hidden" id="event-delete">Delete</button>
           <div class="modal-footer-spacer"></div>
           <button type="button" class="text-btn" data-close-modal="modal-event">Cancel</button>
+          <button type="submit" class="pill-btn pill-btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Task modal -->
+  <div class="modal-overlay hidden" id="modal-task">
+    <div class="modal-sheet">
+      <form id="task-form">
+        <div class="modal-header">
+          <h2 class="modal-title" id="task-modal-title">New task</h2>
+          <button type="button" class="icon-btn" data-close-modal="modal-task">×</button>
+        </div>
+        <div class="modal-body">
+          <label class="field-label" for="task-title">Title</label>
+          <input class="field-input" id="task-title" type="text" placeholder="What needs doing?" required>
+
+          <div class="field-row">
+            <div class="field-col">
+              <label class="field-label" for="task-date">Due date</label>
+              <input class="field-input" id="task-date" type="date">
+            </div>
+            <div class="field-col">
+              <label class="field-label" for="task-time">Due time</label>
+              <input class="field-input" id="task-time" type="time">
+            </div>
+          </div>
+
+          <label class="field-label">Category</label>
+          <div class="category-picker" id="task-category-picker"></div>
+
+          <label class="field-label" for="task-notes">Notes</label>
+          <textarea class="field-input" id="task-notes" rows="3" placeholder="Optional details…"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="text-btn text-btn-danger hidden" id="task-delete">Delete</button>
+          <div class="modal-footer-spacer"></div>
+          <button type="button" class="text-btn" data-close-modal="modal-task">Cancel</button>
           <button type="submit" class="pill-btn pill-btn-primary">Save</button>
         </div>
       </form>

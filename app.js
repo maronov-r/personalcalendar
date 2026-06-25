@@ -4,6 +4,7 @@
 
 const STORAGE_KEYS = {
   events: 'orbit_events',
+  tasks: 'orbit_tasks',
   contacts: 'orbit_contacts',
   settings: 'orbit_settings',
   categories: 'orbit_categories',
@@ -102,6 +103,7 @@ const initialSettings = Object.assign({
 
 const state = {
   events: loadJSON(STORAGE_KEYS.events, []),
+  tasks: loadJSON(STORAGE_KEYS.tasks, []),
   contacts: loadJSON(STORAGE_KEYS.contacts, []),
   categories: loadJSON(STORAGE_KEYS.categories, null) || DEFAULT_CATEGORIES.map(c => Object.assign({}, c)),
   circles: loadJSON(STORAGE_KEYS.circles, null) || DEFAULT_CIRCLES.map(c => Object.assign({}, c)),
@@ -113,12 +115,14 @@ const state = {
   screen: 'calendar',
   activeContactId: null,
   editingEventId: null,
+  editingTaskId: null,
   editingContactId: null,
   editingCategoryId: null,
   editingCircleId: null,
   pendingConfirmAction: null,
   selectedEventContactId: null,
   selectedCategory: 'work',
+  selectedTaskCategory: 'work',
   selectedEmoji: '🙂',
   selectedCategoryIcon: '💼',
   selectedCircleIcon: '🎉',
@@ -127,6 +131,7 @@ const state = {
 };
 
 function persistEvents() { saveJSON(STORAGE_KEYS.events, state.events); markLocalChange(); }
+function persistTasks() { saveJSON(STORAGE_KEYS.tasks, state.tasks); markLocalChange(); }
 function persistContacts() { saveJSON(STORAGE_KEYS.contacts, state.contacts); markLocalChange(); }
 function persistSettings() { saveJSON(STORAGE_KEYS.settings, state.settings); markLocalChange(); }
 function persistCategories() { saveJSON(STORAGE_KEYS.categories, state.categories); markLocalChange(); }
@@ -195,6 +200,7 @@ function buildSyncDoc() {
   return {
     updatedAt: state.sync.lastLocalChangeAt,
     events: state.events,
+    tasks: state.tasks,
     contacts: state.contacts,
     categories: state.categories,
     circles: state.circles,
@@ -204,11 +210,13 @@ function buildSyncDoc() {
 
 function applyRemoteDoc(remote) {
   state.events = Array.isArray(remote.events) ? remote.events : [];
+  state.tasks = Array.isArray(remote.tasks) ? remote.tasks : [];
   state.contacts = Array.isArray(remote.contacts) ? remote.contacts : [];
   state.categories = Array.isArray(remote.categories) && remote.categories.length ? remote.categories : state.categories;
   state.circles = Array.isArray(remote.circles) && remote.circles.length ? remote.circles : state.circles;
   state.settings = Object.assign({}, state.settings, remote.settings || {});
   saveJSON(STORAGE_KEYS.events, state.events);
+  saveJSON(STORAGE_KEYS.tasks, state.tasks);
   saveJSON(STORAGE_KEYS.contacts, state.contacts);
   saveJSON(STORAGE_KEYS.categories, state.categories);
   saveJSON(STORAGE_KEYS.circles, state.circles);
@@ -219,6 +227,7 @@ function applyRemoteDoc(remote) {
   applyAccentColor();
   applyBubbleSettings();
   buildCategoryPicker();
+  buildTaskCategoryPicker();
   buildCirclePicker();
   buildReminderOptions();
   buildFollowUpOptions();
@@ -672,29 +681,35 @@ function switchScreen(screen) {
     b.classList.toggle('active', b.dataset.screen === screen || (screen === 'contact-profile' && b.dataset.screen === 'people'));
   });
 
-  ['calendar-controls', 'people-controls', 'profile-controls', 'settings-controls'].forEach(id => {
+  ['calendar-controls', 'people-controls', 'profile-controls', 'settings-controls', 'tasks-controls'].forEach(id => {
     document.getElementById(id).classList.add('hidden');
   });
-  const controlsMap = { calendar: 'calendar-controls', people: 'people-controls', 'contact-profile': 'profile-controls', settings: 'settings-controls' };
+  const controlsMap = { calendar: 'calendar-controls', people: 'people-controls', 'contact-profile': 'profile-controls', settings: 'settings-controls', tasks: 'tasks-controls' };
   document.getElementById(controlsMap[screen]).classList.remove('hidden');
 
   if (screen === 'calendar') renderCalendar();
   else if (screen === 'people') { setActivePeopleViewToggle(state.peopleView); renderPeople(); }
   else if (screen === 'contact-profile') renderContactProfile(state.activeContactId);
   else if (screen === 'settings') renderSettings();
+  else if (screen === 'tasks') renderTasks();
 }
 
 function refreshCurrentScreen() {
   if (state.screen === 'calendar') renderCalendar();
   else if (state.screen === 'people') renderPeople();
   else if (state.screen === 'contact-profile') renderContactProfile(state.activeContactId);
+  else if (state.screen === 'tasks') renderTasks();
 }
 
 function wireBottomNav() {
   document.querySelectorAll('.nav-btn[data-screen]').forEach(btn => {
     btn.addEventListener('click', () => switchScreen(btn.dataset.screen));
   });
-  document.getElementById('btn-quick-add').addEventListener('click', () => openEventModal());
+  document.getElementById('btn-quick-add').addEventListener('click', () => {
+    if (state.screen === 'tasks') openTaskModal();
+    else openEventModal();
+  });
+  document.getElementById('btn-add-task').addEventListener('click', () => openTaskModal());
   document.getElementById('btn-back-people').addEventListener('click', () => switchScreen('people'));
 }
 
@@ -766,6 +781,7 @@ function dateAtMinutes(day, minutes) {
 }
 
 function renderEventPill(p) {
+  if (p.kind === 'task') return renderTaskPill(p);
   const cat = getCategory(p.ev.category);
   const pill = document.createElement('div');
   pill.className = 'event-pill';
@@ -790,6 +806,103 @@ function renderEventPill(p) {
   attachPillMoveDrag(pill, p);
   attachPillResizeDrag(pill, p);
   return pill;
+}
+
+function renderTaskPill(p) {
+  const task = p.task;
+  const cat = getCategory(task.category);
+  const pill = document.createElement('div');
+  pill.className = 'event-pill task-pill' + (task.done ? ' is-done' : '');
+  pill.dataset.taskId = task.id;
+  const top = ((p.startMin - getDayStartHour() * 60) / 60) * getHourHeight();
+  const height = Math.max(((p.endMin - p.startMin) / 60) * getHourHeight(), 26);
+  pill.style.top = `${top}px`;
+  pill.style.height = `${height}px`;
+  pill.style.left = `${(p.col / p.totalCols) * 100}%`;
+  pill.style.width = `calc(${(1 / p.totalCols) * 100}% - 3px)`;
+  pill.style.setProperty('--cat-color', cat.color);
+  pill.style.setProperty('--cat-glow', hexToRgba(cat.color, 0.35));
+  if (height < 38) pill.classList.add('is-short');
+
+  const start = combineDateTime(task.dueDate, task.dueTime);
+  pill.innerHTML = `
+    <span class="event-pill-title"><span class="event-pill-icon">${task.done ? '✓' : '○'}</span>${escapeHtml(task.title)}</span>
+    <span class="event-pill-time">${formatTimeShort(start)}</span>
+  `;
+
+  attachTaskPillDrag(pill, task);
+  return pill;
+}
+
+function attachTaskPillDrag(pill, task) {
+  let dragging = false, moved = false;
+  let startX = 0, startY = 0, initialTop = 0;
+
+  pill.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    dragging = true; moved = false;
+    startX = e.clientX; startY = e.clientY;
+    initialTop = parseFloat(pill.style.top);
+    pill.setPointerCapture(e.pointerId);
+  });
+
+  pill.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    if (!moved && Math.hypot(dx, dy) < 4) return;
+    if (!moved) {
+      moved = true;
+      pill.classList.add('is-dragging');
+      document.body.classList.add('is-dragging-event');
+    }
+    const dayStartHour = getDayStartHour(), dayEndHour = getDayEndHour();
+    const maxTop = (dayEndHour - dayStartHour) * getHourHeight() - pill.offsetHeight;
+    let newTop = Math.min(Math.max(initialTop + dy, 0), Math.max(maxTop, 0));
+    newTop = Math.round(newTop / getDragStepPx()) * getDragStepPx();
+
+    const daysGrid = document.getElementById('days-grid');
+    const cols = Array.from(daysGrid.children);
+    const targetCol = document.elementFromPoint(e.clientX, e.clientY)?.closest('.day-col');
+    cols.forEach(c => c.classList.toggle('is-drop-target', c === targetCol));
+    if (targetCol && targetCol !== pill.parentElement) targetCol.appendChild(pill);
+
+    pill.style.top = `${newTop}px`;
+    const newStartMin = dayStartHour * 60 + (newTop / getHourHeight()) * 60;
+    pill.querySelector('.event-pill-time').textContent = formatTimeShort(dateAtMinutes(new Date(), newStartMin));
+  });
+
+  const finishDrag = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.querySelectorAll('.day-col.is-drop-target').forEach(c => c.classList.remove('is-drop-target'));
+    if (!moved) return;
+    pill.classList.remove('is-dragging');
+    document.body.classList.remove('is-dragging-event');
+
+    const daysGrid = document.getElementById('days-grid');
+    const cols = Array.from(daysGrid.children);
+    const colIndex = cols.indexOf(pill.parentElement);
+    const weekStart = startOfWeek(state.currentDate);
+    const targetDay = colIndex >= 0 ? addDays(weekStart, colIndex) : combineDateTime(task.dueDate, task.dueTime);
+
+    const dayStartHour = getDayStartHour();
+    const newTop = parseFloat(pill.style.top);
+    const newStartMin = dayStartHour * 60 + (newTop / getHourHeight()) * 60;
+    const newStart = dateAtMinutes(targetDay, newStartMin);
+    task.dueDate = dateKey(newStart);
+    task.dueTime = timeKey(newStart);
+    persistTasks();
+    refreshCurrentScreen();
+  };
+
+  pill.addEventListener('pointerup', finishDrag);
+  pill.addEventListener('pointercancel', finishDrag);
+
+  pill.addEventListener('click', (e) => {
+    if (moved) { e.stopPropagation(); moved = false; return; }
+    e.stopPropagation();
+    openTaskModal(task.id);
+  });
 }
 
 function attachPillMoveDrag(pill, p) {
@@ -933,6 +1046,24 @@ function renderWeek() {
     head.className = 'day-head' + (isSameDay(d, today) ? ' is-today' : '');
     head.innerHTML = `<span class="day-head-dow">${formatDayHeader(d)}</span><span class="day-head-num">${d.getDate()}</span>`;
     head.addEventListener('click', () => { state.currentDate = d; renderCalendar(); });
+
+    const allDayTasks = state.tasks.filter(t => !t.done && t.dueDate === dateKey(d) && !t.dueTime);
+    if (allDayTasks.length) {
+      const chipsWrap = document.createElement('div');
+      chipsWrap.className = 'day-head-task-chips';
+      allDayTasks.forEach(t => {
+        const cat = getCategory(t.category);
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'day-head-task-chip';
+        chip.style.setProperty('--cat-color', cat.color);
+        chip.textContent = `${cat.icon} ${t.title}`;
+        chip.addEventListener('click', (e) => { e.stopPropagation(); openTaskModal(t.id); });
+        chipsWrap.appendChild(chip);
+      });
+      head.appendChild(chipsWrap);
+    }
+
     header.appendChild(head);
   }
 
@@ -981,9 +1112,15 @@ function renderWeek() {
         const startD = new Date(ev.start), endD = new Date(ev.end);
         const startMin = minutesOf(startD);
         const endMin = isSameDay(startD, endD) ? Math.max(startMin + 15, minutesOf(endD)) : dayEndHour * 60;
-        return { ev, startMin, endMin };
+        return { kind: 'event', ev, startMin, endMin };
       });
-    layoutDayEvents(dayItems).forEach(p => col.appendChild(renderEventPill(p)));
+    const dayTaskItems = state.tasks
+      .filter(t => !t.done && t.dueDate === dateKey(d) && t.dueTime)
+      .map(t => {
+        const startMin = minutesOf(combineDateTime(t.dueDate, t.dueTime));
+        return { kind: 'task', task: t, startMin, endMin: startMin + 30 };
+      });
+    layoutDayEvents(dayItems.concat(dayTaskItems)).forEach(p => col.appendChild(renderEventPill(p)));
 
     if (isSameDay(d, today)) {
       const nowMin = minutesOf(today);
@@ -1098,8 +1235,33 @@ function buildCategoryPicker() {
   }
 }
 function updateCategoryPickerUI() {
-  document.querySelectorAll('.category-pill').forEach(btn => {
+  document.querySelectorAll('#category-picker .category-pill').forEach(btn => {
     btn.classList.toggle('selected', btn.dataset.category === state.selectedCategory);
+  });
+}
+
+function buildTaskCategoryPicker() {
+  const picker = document.getElementById('task-category-picker');
+  if (!picker) return;
+  picker.innerHTML = '';
+  state.categories.forEach(cat => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'category-pill';
+    btn.dataset.category = cat.id;
+    btn.style.setProperty('--cat-color', cat.color);
+    btn.style.setProperty('--cat-glow', hexToRgba(cat.color, 0.3));
+    btn.innerHTML = `${cat.icon} ${cat.label.split(' / ')[0]}`;
+    btn.addEventListener('click', () => { state.selectedTaskCategory = cat.id; updateTaskCategoryPickerUI(); });
+    picker.appendChild(btn);
+  });
+  if (!state.categories.some(c => c.id === state.selectedTaskCategory)) {
+    state.selectedTaskCategory = state.categories[0] ? state.categories[0].id : null;
+  }
+}
+function updateTaskCategoryPickerUI() {
+  document.querySelectorAll('#task-category-picker .category-pill').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.category === state.selectedTaskCategory);
   });
 }
 
@@ -1277,6 +1439,135 @@ function wireEventForm() {
       showToast('Event deleted');
     }, { title: 'Delete event', okLabel: 'Delete' });
   });
+}
+
+/* ===================== Tasks ===================== */
+
+function openTaskModal(taskId, options) {
+  options = options || {};
+  state.editingTaskId = taskId || null;
+  document.getElementById('task-form').reset();
+  document.getElementById('task-delete').classList.toggle('hidden', !taskId);
+
+  if (taskId) {
+    const task = state.tasks.find(t => t.id === taskId);
+    document.getElementById('task-modal-title').textContent = 'Edit task';
+    document.getElementById('task-title').value = task.title;
+    document.getElementById('task-date').value = task.dueDate || '';
+    document.getElementById('task-time').value = task.dueTime || '';
+    document.getElementById('task-notes').value = task.notes || '';
+    state.selectedTaskCategory = task.category;
+  } else {
+    document.getElementById('task-modal-title').textContent = 'New task';
+    document.getElementById('task-date').value = options.date ? dateKey(options.date) : '';
+    document.getElementById('task-time').value = '';
+    document.getElementById('task-notes').value = '';
+    state.selectedTaskCategory = state.categories[0] ? state.categories[0].id : null;
+  }
+  updateTaskCategoryPickerUI();
+  openModal('modal-task');
+}
+
+function wireTaskForm() {
+  document.getElementById('task-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const title = document.getElementById('task-title').value.trim();
+    if (!title) return;
+    const dueDate = document.getElementById('task-date').value || null;
+    const dueTime = dueDate ? (document.getElementById('task-time').value || null) : null;
+    const notes = document.getElementById('task-notes').value.trim();
+
+    if (state.editingTaskId) {
+      const task = state.tasks.find(t => t.id === state.editingTaskId);
+      task.title = title; task.dueDate = dueDate; task.dueTime = dueTime;
+      task.category = state.selectedTaskCategory; task.notes = notes;
+    } else {
+      state.tasks.push({
+        id: uid(), title, dueDate, dueTime,
+        category: state.selectedTaskCategory, notes, done: false,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    persistTasks();
+    closeModal('modal-task');
+    refreshCurrentScreen();
+    showToast('Task saved');
+  });
+
+  document.getElementById('task-delete').addEventListener('click', () => {
+    const id = state.editingTaskId;
+    confirmDialog("Delete this task? This can't be undone.", () => {
+      state.tasks = state.tasks.filter(t => t.id !== id);
+      persistTasks();
+      closeModal('modal-task');
+      refreshCurrentScreen();
+      showToast('Task deleted');
+    }, { title: 'Delete task', okLabel: 'Delete' });
+  });
+}
+
+function toggleTaskDone(taskId) {
+  const task = state.tasks.find(t => t.id === taskId);
+  if (!task) return;
+  task.done = !task.done;
+  persistTasks();
+  refreshCurrentScreen();
+}
+
+function taskRowHtml(task) {
+  const cat = getCategory(task.category);
+  const dueLabel = task.dueDate
+    ? `${formatDateFull(combineDateTime(task.dueDate, task.dueTime || '00:00'))}${task.dueTime ? ' · ' + formatTimeShort(combineDateTime(task.dueDate, task.dueTime)) : ''}`
+    : 'No due date';
+  return `<div class="contact-row task-row${task.done ? ' is-done' : ''}" data-task-id="${task.id}">
+    <button type="button" class="task-checkbox" data-task-checkbox="${task.id}" aria-label="Mark done">${task.done ? '✓' : ''}</button>
+    <div class="contact-row-main">
+      <div class="contact-row-name">${cat.icon} ${escapeHtml(task.title)}</div>
+      <div class="contact-row-tags"><span class="tag-pill">${dueLabel}</span></div>
+    </div>
+  </div>`;
+}
+
+function renderTaskList(containerId, tasks) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = tasks.map(taskRowHtml).join('');
+  container.querySelectorAll('[data-task-checkbox]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); toggleTaskDone(btn.dataset.taskCheckbox); });
+  });
+  container.querySelectorAll('.task-row').forEach(row => {
+    row.addEventListener('click', () => openTaskModal(row.dataset.taskId));
+  });
+}
+
+function renderTasks() {
+  document.getElementById('tasks-empty').classList.toggle('hidden', state.tasks.length > 0);
+  document.getElementById('tasks-list-view').classList.toggle('hidden', state.tasks.length === 0);
+
+  const today = dateKey(new Date());
+  const overdue = [], todayList = [], upcoming = [], noDate = [], done = [];
+  state.tasks.forEach(t => {
+    if (t.done) { done.push(t); return; }
+    if (!t.dueDate) { noDate.push(t); return; }
+    if (t.dueDate < today) overdue.push(t);
+    else if (t.dueDate === today) todayList.push(t);
+    else upcoming.push(t);
+  });
+  const byDue = (a, b) => (a.dueDate || '').localeCompare(b.dueDate || '') || (a.dueTime || '').localeCompare(b.dueTime || '');
+  overdue.sort(byDue); todayList.sort(byDue); upcoming.sort(byDue);
+  done.sort((a, b) => (b.dueDate || '').localeCompare(a.dueDate || ''));
+
+  renderTaskList('list-tasks-overdue', overdue);
+  renderTaskList('list-tasks-today', todayList);
+  renderTaskList('list-tasks-upcoming', upcoming);
+  renderTaskList('list-tasks-nodate', noDate);
+  renderTaskList('list-tasks-done', done);
+
+  document.getElementById('section-tasks-overdue').classList.toggle('hidden', !overdue.length);
+  document.getElementById('section-tasks-today').classList.toggle('hidden', !todayList.length);
+  document.getElementById('section-tasks-upcoming').classList.toggle('hidden', !upcoming.length);
+  document.getElementById('section-tasks-nodate').classList.toggle('hidden', !noDate.length);
+  document.getElementById('section-tasks-done').classList.toggle('hidden', !done.length);
 }
 
 /* ===================== CRM — People list ===================== */
@@ -1710,6 +2001,7 @@ function wireCategoryForm() {
     closeModal('modal-category');
     renderCategoryManager();
     buildCategoryPicker();
+    buildTaskCategoryPicker();
     refreshCurrentScreen();
     showToast('Category saved');
   });
@@ -1717,8 +2009,8 @@ function wireCategoryForm() {
   document.getElementById('category-delete').addEventListener('click', () => {
     const id = state.editingCategoryId;
     if (state.categories.length <= 1) { showToast("Can't delete the last category"); return; }
-    if (state.events.some(ev => ev.category === id)) {
-      showToast('This category is used by an event — recategorize or delete those events first');
+    if (state.events.some(ev => ev.category === id) || state.tasks.some(t => t.category === id)) {
+      showToast('This category is used by an event or task — recategorize or delete those first');
       return;
     }
     confirmDialog('Delete this category?', () => {
@@ -1727,6 +2019,7 @@ function wireCategoryForm() {
       closeModal('modal-category');
       renderCategoryManager();
       buildCategoryPicker();
+      buildTaskCategoryPicker();
       showToast('Category deleted');
     }, { title: 'Delete category', okLabel: 'Delete' });
   });
@@ -2097,6 +2390,7 @@ function wireSettings() {
   document.getElementById('btn-clear-data').addEventListener('click', () => {
     confirmDialog("This will permanently delete all events and contacts. This can't be undone.", () => {
       localStorage.removeItem(STORAGE_KEYS.events);
+      localStorage.removeItem(STORAGE_KEYS.tasks);
       localStorage.removeItem(STORAGE_KEYS.contacts);
       localStorage.removeItem(STORAGE_KEYS.settings);
       localStorage.removeItem(STORAGE_KEYS.categories);
@@ -2199,6 +2493,7 @@ function init() {
   seedDemoData();
 
   buildCategoryPicker();
+  buildTaskCategoryPicker();
   buildCirclePicker();
   buildEmojiGrid('emoji-grid', EMOJI_CHOICES, (em) => {
     state.selectedEmoji = em;
@@ -2222,6 +2517,7 @@ function init() {
   wireCalendarControls();
   wireContactCombobox();
   wireEventForm();
+  wireTaskForm();
   wireContactModalWidgets();
   wireContactForm();
   wireCategoryModalWidgets();
