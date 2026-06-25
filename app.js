@@ -6,29 +6,40 @@ const STORAGE_KEYS = {
   events: 'orbit_events',
   contacts: 'orbit_contacts',
   settings: 'orbit_settings',
+  categories: 'orbit_categories',
   seeded: 'orbit_seeded',
 };
 
 const THEME_COLORS = { dark: '#0a0a0f', light: '#eef0f6' };
+const DEFAULT_ACCENT = '#00f5ff';
 
-const CATEGORIES = {
-  work:     { label: 'Work / Focus',       color: '#00f5ff', icon: '💼' },
-  social:   { label: 'Social / Friends',   color: '#bf5af2', icon: '🎉' },
-  health:   { label: 'Health / Exercise',  color: '#39ff14', icon: '🏃' },
-  personal: { label: 'Personal / Errands', color: '#f5a623', icon: '🧾' },
-  meal:     { label: 'Meal / Food',        color: '#ff6ec7', icon: '🍽️' },
-};
+const DEFAULT_CATEGORIES = [
+  { id: 'work',     label: 'Work / Focus',       color: '#00f5ff', icon: '💼' },
+  { id: 'social',   label: 'Social / Friends',   color: '#bf5af2', icon: '🎉' },
+  { id: 'health',   label: 'Health / Exercise',  color: '#39ff14', icon: '🏃' },
+  { id: 'personal', label: 'Personal / Errands', color: '#f5a623', icon: '🧾' },
+  { id: 'meal',     label: 'Meal / Food',        color: '#ff6ec7', icon: '🍽️' },
+];
 
-const FOLLOWUP_LABELS = { weekly: 'Weekly', monthly: 'Monthly', quarterly: 'Every 3 months', none: 'No reminder' };
-const FOLLOWUP_DAYS = { weekly: 7, monthly: 30, quarterly: 90, none: null };
+const DEFAULT_REMINDER_PRESETS = [
+  { minutes: 10, label: '10 minutes before' },
+  { minutes: 30, label: '30 minutes before' },
+  { minutes: 60, label: '1 hour before' },
+  { minutes: 1440, label: '1 day before' },
+];
+const DEFAULT_FOLLOWUP_PRESETS = [
+  { id: 'weekly', label: 'Weekly', days: 7 },
+  { id: 'monthly', label: 'Monthly', days: 30 },
+  { id: 'quarterly', label: 'Every 3 months', days: 90 },
+  { id: 'none', label: 'No reminder', days: null },
+];
 
 const EMOJI_CHOICES = ['🙂','😀','😎','🤓','🥳','😇','🤠','🧑','👩','👨','🧔','👱','👩‍🦱','👨‍🦱','👩‍🦰','🧑‍🦳','👩‍🦳','🧑‍🦲','🧑‍💼','👩‍💻','👨‍💻','🧑‍🎨','🧑‍🏫','🧑‍⚕️','🧑‍🍳','🧑‍🚀','🧑‍🎤','👵','👴','🐱','🐶','💼'];
+const CATEGORY_ICON_CHOICES = ['💼','🎉','🏃','🧾','🍽️','📚','💪','🎨','🛒','✈️','🏠','💰','🎮','🧘','🐾','📞','🎵','⚽','🚗','💻','📅','❤️','🎓','🛠️'];
 
 const TAG_SUGGESTIONS = ['close friend', 'friend', 'family', 'colleague', 'acquaintance'];
 
 const HOUR_HEIGHT = 56; // px — keep in sync with style.css .hour-line/.hour-label
-const WEEK_START_HOUR = 0;
-const WEEK_END_HOUR = 24;
 
 const REMINDER_GRACE_MS = 2 * 60 * 60 * 1000; // ignore reminders more than 2h stale
 const DIGEST_HOUR = 8;
@@ -53,26 +64,67 @@ function uid() {
 
 /* ===================== State ===================== */
 
+const initialSettings = Object.assign({
+  dailyDigest: true,
+  lastDigestDate: null,
+  theme: 'dark',
+  accentColor: DEFAULT_ACCENT,
+  weekStartsOn: 'monday',
+  defaultView: 'week',
+  dayStartHour: 0,
+  dayEndHour: 24,
+  reminderPresets: DEFAULT_REMINDER_PRESETS.map(p => Object.assign({}, p)),
+  followUpPresets: DEFAULT_FOLLOWUP_PRESETS.map(p => Object.assign({}, p)),
+}, loadJSON(STORAGE_KEYS.settings, {}));
+
 const state = {
   events: loadJSON(STORAGE_KEYS.events, []),
   contacts: loadJSON(STORAGE_KEYS.contacts, []),
-  settings: Object.assign({ dailyDigest: true, lastDigestDate: null, theme: 'dark' }, loadJSON(STORAGE_KEYS.settings, {})),
-  view: 'week',
+  categories: loadJSON(STORAGE_KEYS.categories, null) || DEFAULT_CATEGORIES.map(c => Object.assign({}, c)),
+  settings: initialSettings,
+  view: initialSettings.defaultView === 'month' ? 'month' : 'week',
   currentDate: new Date(),
   screen: 'calendar',
   activeContactId: null,
   editingEventId: null,
   editingContactId: null,
+  editingCategoryId: null,
   pendingConfirmAction: null,
   selectedEventContactId: null,
   selectedCategory: 'work',
   selectedEmoji: '🙂',
+  selectedCategoryIcon: '💼',
   contactTags: [],
 };
 
 function persistEvents() { saveJSON(STORAGE_KEYS.events, state.events); }
 function persistContacts() { saveJSON(STORAGE_KEYS.contacts, state.contacts); }
 function persistSettings() { saveJSON(STORAGE_KEYS.settings, state.settings); }
+function persistCategories() { saveJSON(STORAGE_KEYS.categories, state.categories); }
+
+function getCategoryMap() {
+  const m = {};
+  state.categories.forEach(c => { m[c.id] = c; });
+  return m;
+}
+function getCategory(id) {
+  return getCategoryMap()[id] || state.categories[0];
+}
+function getFollowUpPresetMap() {
+  const m = {};
+  state.settings.followUpPresets.forEach(p => { m[p.id] = p; });
+  return m;
+}
+function getFollowUpDays(id) {
+  const p = getFollowUpPresetMap()[id];
+  return p ? p.days : null;
+}
+function getFollowUpLabel(id) {
+  const p = getFollowUpPresetMap()[id];
+  return p ? p.label : 'No reminder';
+}
+function getDayStartHour() { return state.settings.dayStartHour; }
+function getDayEndHour() { return state.settings.dayEndHour; }
 
 /* ===================== Theme ===================== */
 
@@ -90,6 +142,16 @@ window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', ()
   if (state.settings.theme === 'auto') applyTheme();
 });
 
+function hexToRgbTriplet(hex) {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return `${r}, ${g}, ${b}`;
+}
+function applyAccentColor() {
+  const color = state.settings.accentColor || DEFAULT_ACCENT;
+  document.documentElement.style.setProperty('--cyan', color);
+  document.documentElement.style.setProperty('--cyan-rgb', hexToRgbTriplet(color));
+}
+
 /* ===================== Date utils ===================== */
 
 function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
@@ -98,7 +160,8 @@ function addMonths(d, n) { return new Date(d.getFullYear(), d.getMonth() + n, 1)
 function isSameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
 function startOfWeek(d) {
   const x = startOfDay(d);
-  const dow = (x.getDay() + 6) % 7; // Monday = 0
+  const startDow = state.settings.weekStartsOn === 'sunday' ? 0 : 1;
+  const dow = (x.getDay() - startDow + 7) % 7;
   return addDays(x, -dow);
 }
 function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
@@ -201,7 +264,7 @@ function getContactStatus(contact) {
   const lastSeen = getEffectiveLastSeen(contact);
   const future = getContactFutureEvents(contact.id);
   const nextPlanned = future.length ? new Date(future[0].start) : null;
-  const thresholdDays = FOLLOWUP_DAYS[contact.followUpFrequency];
+  const thresholdDays = getFollowUpDays(contact.followUpFrequency);
   const daysSince = lastSeen ? daysBetween(lastSeen, new Date()) : null;
 
   let isOverdue = false, daysOverdue = null;
@@ -362,10 +425,10 @@ function layoutDayEvents(items) {
 }
 
 function renderEventPill(p) {
-  const cat = CATEGORIES[p.ev.category] || CATEGORIES.work;
+  const cat = getCategory(p.ev.category);
   const pill = document.createElement('div');
   pill.className = 'event-pill';
-  const top = ((p.startMin - WEEK_START_HOUR * 60) / 60) * HOUR_HEIGHT;
+  const top = ((p.startMin - getDayStartHour() * 60) / 60) * HOUR_HEIGHT;
   const height = Math.max(((p.endMin - p.startMin) / 60) * HOUR_HEIGHT, 26);
   pill.style.top = `${top}px`;
   pill.style.height = `${height}px`;
@@ -401,9 +464,11 @@ function renderWeek() {
     header.appendChild(head);
   }
 
+  const dayStartHour = getDayStartHour(), dayEndHour = getDayEndHour();
+
   const hoursCol = document.getElementById('hours-col');
   hoursCol.innerHTML = '';
-  for (let h = WEEK_START_HOUR; h < WEEK_END_HOUR; h++) {
+  for (let h = dayStartHour; h < dayEndHour; h++) {
     const lbl = document.createElement('div');
     lbl.className = 'hour-label';
     lbl.textContent = formatHourLabel(h);
@@ -416,8 +481,8 @@ function renderWeek() {
     const d = days[i];
     const col = document.createElement('div');
     col.className = 'day-col';
-    col.style.height = `${(WEEK_END_HOUR - WEEK_START_HOUR) * HOUR_HEIGHT}px`;
-    for (let h = WEEK_START_HOUR; h < WEEK_END_HOUR; h++) {
+    col.style.height = `${(dayEndHour - dayStartHour) * HOUR_HEIGHT}px`;
+    for (let h = dayStartHour; h < dayEndHour; h++) {
       const line = document.createElement('div');
       line.className = 'hour-line';
       col.appendChild(line);
@@ -428,7 +493,7 @@ function renderWeek() {
       const rect = col.getBoundingClientRect();
       const offsetY = e.clientY - rect.top;
       const minutesFromStart = (offsetY / HOUR_HEIGHT) * 60;
-      const snapped = Math.round((WEEK_START_HOUR * 60 + minutesFromStart) / 30) * 30;
+      const snapped = Math.round((dayStartHour * 60 + minutesFromStart) / 30) * 30;
       const startD = new Date(d);
       startD.setHours(0, snapped, 0, 0);
       openEventModal(null, { date: startD });
@@ -439,7 +504,7 @@ function renderWeek() {
       .map(ev => {
         const startD = new Date(ev.start), endD = new Date(ev.end);
         const startMin = minutesOf(startD);
-        const endMin = isSameDay(startD, endD) ? Math.max(startMin + 15, minutesOf(endD)) : WEEK_END_HOUR * 60;
+        const endMin = isSameDay(startD, endD) ? Math.max(startMin + 15, minutesOf(endD)) : dayEndHour * 60;
         return { ev, startMin, endMin };
       });
     layoutDayEvents(dayItems).forEach(p => col.appendChild(renderEventPill(p)));
@@ -448,7 +513,7 @@ function renderWeek() {
       const nowMin = minutesOf(today);
       const line = document.createElement('div');
       line.className = 'now-line';
-      line.style.top = `${((nowMin - WEEK_START_HOUR * 60) / 60) * HOUR_HEIGHT}px`;
+      line.style.top = `${((nowMin - dayStartHour * 60) / 60) * HOUR_HEIGHT}px`;
       col.appendChild(line);
     }
 
@@ -457,7 +522,7 @@ function renderWeek() {
 
   const scrollEl = document.getElementById('week-scroll');
   if (!scrollEl.dataset.scrolled) {
-    scrollEl.scrollTop = Math.max(0, (7 - WEEK_START_HOUR) * HOUR_HEIGHT - 40);
+    scrollEl.scrollTop = Math.max(0, (7 - dayStartHour) * HOUR_HEIGHT - 40);
     scrollEl.dataset.scrolled = '1';
   }
 }
@@ -468,10 +533,10 @@ function renderMonth() {
   const today = new Date();
 
   const weekdayRow = document.getElementById('month-weekday-row');
-  if (!weekdayRow.dataset.built) {
-    weekdayRow.innerHTML = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => `<span>${d}</span>`).join('');
-    weekdayRow.dataset.built = '1';
-  }
+  const dowLabels = state.settings.weekStartsOn === 'sunday'
+    ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  weekdayRow.innerHTML = dowLabels.map(d => `<span>${d}</span>`).join('');
 
   const grid = document.getElementById('month-grid');
   grid.innerHTML = '';
@@ -486,7 +551,7 @@ function renderMonth() {
     let dotsHtml = '';
     if (dayEvents.length) {
       dotsHtml += '<div class="month-cell-dots">' + dayEvents.slice(0, 3).map(ev => {
-        const cat = CATEGORIES[ev.category] || CATEGORIES.work;
+        const cat = getCategory(ev.category);
         return `<span class="month-dot" style="--dot-color:${cat.color}"></span>`;
       }).join('') + '</div>';
     }
@@ -541,17 +606,20 @@ function wireCalendarControls() {
 function buildCategoryPicker() {
   const picker = document.getElementById('category-picker');
   picker.innerHTML = '';
-  Object.entries(CATEGORIES).forEach(([key, cat]) => {
+  state.categories.forEach(cat => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'category-pill';
-    btn.dataset.category = key;
+    btn.dataset.category = cat.id;
     btn.style.setProperty('--cat-color', cat.color);
     btn.style.setProperty('--cat-glow', hexToRgba(cat.color, 0.3));
     btn.innerHTML = `${cat.icon} ${cat.label.split(' / ')[0]}`;
-    btn.addEventListener('click', () => { state.selectedCategory = key; updateCategoryPickerUI(); });
+    btn.addEventListener('click', () => { state.selectedCategory = cat.id; updateCategoryPickerUI(); });
     picker.appendChild(btn);
   });
+  if (!state.categories.some(c => c.id === state.selectedCategory)) {
+    state.selectedCategory = state.categories[0] ? state.categories[0].id : null;
+  }
 }
 function updateCategoryPickerUI() {
   document.querySelectorAll('.category-pill').forEach(btn => {
@@ -619,6 +687,7 @@ function openEventModal(eventId, options) {
   document.getElementById('event-form').reset();
   document.getElementById('event-delete').classList.toggle('hidden', !eventId);
 
+  const reminderSelect = document.getElementById('event-reminder');
   if (eventId) {
     const ev = state.events.find(e => e.id === eventId);
     document.getElementById('event-modal-title').textContent = 'Edit event';
@@ -628,7 +697,8 @@ function openEventModal(eventId, options) {
     document.getElementById('event-start').value = timeKey(start);
     document.getElementById('event-end').value = timeKey(end);
     document.getElementById('event-notes').value = ev.notes || '';
-    document.getElementById('event-reminder').value = ev.reminderMinutes != null ? String(ev.reminderMinutes) : '';
+    ensureReminderOption(reminderSelect, ev.reminderMinutes);
+    reminderSelect.value = ev.reminderMinutes != null ? String(ev.reminderMinutes) : '';
     state.selectedCategory = ev.category;
     setEventContact(ev.contactId || null);
   } else {
@@ -640,8 +710,8 @@ function openEventModal(eventId, options) {
     document.getElementById('event-start').value = timeKey(start);
     document.getElementById('event-end').value = timeKey(end);
     document.getElementById('event-notes').value = '';
-    document.getElementById('event-reminder').value = '';
-    state.selectedCategory = 'work';
+    reminderSelect.value = '';
+    state.selectedCategory = state.categories[0] ? state.categories[0].id : null;
     setEventContact(options.contactId || null);
   }
   updateCategoryPickerUI();
@@ -757,7 +827,7 @@ function openContactProfile(contactId) {
 }
 
 function eventRowHtml(ev) {
-  const cat = CATEGORIES[ev.category] || CATEGORIES.work;
+  const cat = getCategory(ev.category);
   const start = new Date(ev.start);
   return `<div class="event-row" data-event-id="${ev.id}">
     <span class="event-row-dot" style="--dot-color:${cat.color}"></span>
@@ -793,7 +863,7 @@ function renderContactProfile(contactId) {
     <div class="profile-stats">
       <div class="profile-stat"><div class="profile-stat-label">Last seen</div><div class="profile-stat-value">${lastSeenText}</div></div>
       <div class="profile-stat"><div class="profile-stat-label">Next planned</div><div class="profile-stat-value">${nextText}</div></div>
-      <div class="profile-stat"><div class="profile-stat-label">Follow-up</div><div class="profile-stat-value">${FOLLOWUP_LABELS[c.followUpFrequency]}</div></div>
+      <div class="profile-stat"><div class="profile-stat-label">Follow-up</div><div class="profile-stat-value">${getFollowUpLabel(c.followUpFrequency)}</div></div>
       <div class="profile-stat"><div class="profile-stat-label">Status</div><div class="profile-stat-value">${statusLabel}</div></div>
     </div>
     <div class="profile-actions">
@@ -817,17 +887,16 @@ function renderContactProfile(contactId) {
 
 /* ===================== CRM — Contact modal ===================== */
 
-function buildEmojiGrid() {
-  const grid = document.getElementById('emoji-grid');
+function buildEmojiGrid(gridElId, choices, onSelect) {
+  const grid = document.getElementById(gridElId);
   grid.innerHTML = '';
-  EMOJI_CHOICES.forEach(em => {
+  choices.forEach(em => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'emoji-option';
     btn.textContent = em;
     btn.addEventListener('click', () => {
-      state.selectedEmoji = em;
-      document.getElementById('contact-emoji-btn').textContent = em;
+      onSelect(em);
       grid.classList.add('hidden');
     });
     grid.appendChild(btn);
@@ -864,6 +933,31 @@ function addTag(tag) {
   if (!tag || state.contactTags.includes(tag)) return;
   state.contactTags.push(tag);
   renderTagChips();
+}
+
+function buildReminderOptions() {
+  const sel = document.getElementById('event-reminder');
+  sel.innerHTML = '<option value="">No reminder</option>' +
+    state.settings.reminderPresets.map(p => `<option value="${p.minutes}">${escapeHtml(p.label)}</option>`).join('');
+}
+function ensureReminderOption(select, minutes) {
+  if (minutes == null) return;
+  const exists = Array.from(select.options).some(o => o.value === String(minutes));
+  if (!exists) {
+    const opt = document.createElement('option');
+    opt.value = String(minutes);
+    opt.textContent = `${minutes} minutes before`;
+    select.appendChild(opt);
+  }
+}
+function buildFollowUpOptions() {
+  const sel = document.getElementById('contact-frequency');
+  sel.innerHTML = state.settings.followUpPresets.map(p => `<option value="${p.id}">${escapeHtml(p.label)}</option>`).join('');
+}
+function defaultFollowUpPresetId() {
+  const presets = state.settings.followUpPresets;
+  const monthly = presets.find(p => p.id === 'monthly');
+  return monthly ? monthly.id : (presets[0] ? presets[0].id : '');
 }
 
 function wireContactModalWidgets() {
@@ -905,7 +999,7 @@ function openContactModal(contactId) {
     document.getElementById('contact-emoji-btn').textContent = '🙂';
     state.contactTags = [];
     document.getElementById('contact-lastseen').value = '';
-    document.getElementById('contact-frequency').value = 'monthly';
+    document.getElementById('contact-frequency').value = defaultFollowUpPresetId();
     document.getElementById('contact-notes').value = '';
   }
   renderTagChips();
@@ -948,6 +1042,99 @@ function wireContactForm() {
       else refreshCurrentScreen();
       showToast('Person deleted');
     }, { title: 'Delete person', okLabel: 'Delete' });
+  });
+}
+
+/* ===================== Category manager ===================== */
+
+function renderCategoryManager() {
+  const list = document.getElementById('category-manager-list');
+  list.innerHTML = '';
+  state.categories.forEach(cat => {
+    const row = document.createElement('div');
+    row.className = 'category-manager-row';
+    row.innerHTML = `
+      <span class="category-manager-swatch" style="--cat-color:${cat.color}"></span>
+      <span class="category-manager-icon">${cat.icon}</span>
+      <span class="category-manager-label">${escapeHtml(cat.label)}</span>
+    `;
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'text-btn';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => openCategoryModal(cat.id));
+    row.appendChild(editBtn);
+    list.appendChild(row);
+  });
+}
+
+function openCategoryModal(categoryId) {
+  state.editingCategoryId = categoryId || null;
+  document.getElementById('category-form').reset();
+  document.getElementById('category-icon-grid').classList.add('hidden');
+  document.getElementById('category-delete').classList.toggle('hidden', !categoryId);
+
+  if (categoryId) {
+    const cat = getCategoryMap()[categoryId];
+    document.getElementById('category-modal-title').textContent = 'Edit category';
+    document.getElementById('category-label').value = cat.label;
+    document.getElementById('category-color').value = cat.color;
+    state.selectedCategoryIcon = cat.icon;
+    document.getElementById('category-icon-btn').textContent = cat.icon;
+  } else {
+    document.getElementById('category-modal-title').textContent = 'New category';
+    document.getElementById('category-color').value = DEFAULT_ACCENT;
+    state.selectedCategoryIcon = '💼';
+    document.getElementById('category-icon-btn').textContent = '💼';
+  }
+  openModal('modal-category');
+}
+
+function wireCategoryModalWidgets() {
+  document.getElementById('category-icon-btn').addEventListener('click', () => {
+    document.getElementById('category-icon-grid').classList.toggle('hidden');
+  });
+}
+
+function wireCategoryForm() {
+  document.getElementById('btn-add-category').addEventListener('click', () => openCategoryModal(null));
+
+  document.getElementById('category-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const label = document.getElementById('category-label').value.trim();
+    if (!label) return;
+    const color = document.getElementById('category-color').value;
+    const icon = state.selectedCategoryIcon;
+
+    if (state.editingCategoryId) {
+      const cat = state.categories.find(c => c.id === state.editingCategoryId);
+      cat.label = label; cat.color = color; cat.icon = icon;
+    } else {
+      state.categories.push({ id: uid(), label, color, icon });
+    }
+    persistCategories();
+    closeModal('modal-category');
+    renderCategoryManager();
+    buildCategoryPicker();
+    refreshCurrentScreen();
+    showToast('Category saved');
+  });
+
+  document.getElementById('category-delete').addEventListener('click', () => {
+    const id = state.editingCategoryId;
+    if (state.categories.length <= 1) { showToast("Can't delete the last category"); return; }
+    if (state.events.some(ev => ev.category === id)) {
+      showToast('This category is used by an event — recategorize or delete those events first');
+      return;
+    }
+    confirmDialog('Delete this category?', () => {
+      state.categories = state.categories.filter(c => c.id !== id);
+      persistCategories();
+      closeModal('modal-category');
+      renderCategoryManager();
+      buildCategoryPicker();
+      showToast('Category deleted');
+    }, { title: 'Delete category', okLabel: 'Delete' });
   });
 }
 
@@ -995,6 +1182,14 @@ function updateInstallUI() {
 function renderSettings() {
   document.getElementById('toggle-digest').checked = !!state.settings.dailyDigest;
   setActiveThemeToggle(state.settings.theme);
+  document.getElementById('accent-color-input').value = state.settings.accentColor;
+  renderCategoryManager();
+  setActiveWeekStartToggle(state.settings.weekStartsOn);
+  setActiveDefaultViewToggle(state.settings.defaultView);
+  document.getElementById('select-day-start-hour').value = String(state.settings.dayStartHour);
+  document.getElementById('select-day-end-hour').value = String(state.settings.dayEndHour);
+  renderReminderPresetsEditor();
+  renderFollowUpPresetsEditor();
   updateNotifPermissionUI();
   updateInstallUI();
 }
@@ -1002,6 +1197,84 @@ function renderSettings() {
 function setActiveThemeToggle(theme) {
   document.querySelectorAll('#theme-toggle .view-toggle-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.themeOption === theme);
+  });
+}
+function setActiveWeekStartToggle(value) {
+  document.querySelectorAll('#weekstart-toggle .view-toggle-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.weekstartOption === value);
+  });
+}
+function setActiveDefaultViewToggle(value) {
+  document.querySelectorAll('#defaultview-toggle .view-toggle-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.defaultviewOption === value);
+  });
+}
+
+function buildHourSelects() {
+  const startSel = document.getElementById('select-day-start-hour');
+  const endSel = document.getElementById('select-day-end-hour');
+  startSel.innerHTML = '';
+  endSel.innerHTML = '';
+  for (let h = 0; h < 24; h++) {
+    const opt = document.createElement('option');
+    opt.value = String(h);
+    opt.textContent = formatHourLabel(h);
+    startSel.appendChild(opt);
+  }
+  for (let h = 1; h <= 24; h++) {
+    const opt = document.createElement('option');
+    opt.value = String(h);
+    opt.textContent = h === 24 ? '12 AM (next day)' : formatHourLabel(h);
+    endSel.appendChild(opt);
+  }
+}
+
+function renderReminderPresetsEditor() {
+  const list = document.getElementById('reminder-preset-list');
+  list.innerHTML = '';
+  state.settings.reminderPresets.forEach(preset => {
+    const row = document.createElement('div');
+    row.className = 'preset-row';
+    row.innerHTML = `<span class="preset-row-label">${escapeHtml(preset.label)}</span><span class="preset-row-value">${preset.minutes} min</span>`;
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'preset-row-remove';
+    removeBtn.textContent = '×';
+    removeBtn.addEventListener('click', () => {
+      state.settings.reminderPresets = state.settings.reminderPresets.filter(p => p !== preset);
+      persistSettings();
+      renderReminderPresetsEditor();
+      buildReminderOptions();
+    });
+    row.appendChild(removeBtn);
+    list.appendChild(row);
+  });
+}
+
+function renderFollowUpPresetsEditor() {
+  const list = document.getElementById('followup-preset-list');
+  list.innerHTML = '';
+  state.settings.followUpPresets.forEach(preset => {
+    const row = document.createElement('div');
+    row.className = 'preset-row';
+    row.innerHTML = `<span class="preset-row-label">${escapeHtml(preset.label)}</span><span class="preset-row-value">${preset.days != null ? preset.days + 'd' : '—'}</span>`;
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'preset-row-remove';
+    removeBtn.textContent = '×';
+    removeBtn.addEventListener('click', () => {
+      if (state.settings.followUpPresets.length <= 1) { showToast("Can't delete the last follow-up preset"); return; }
+      const fallback = state.settings.followUpPresets.find(p => p !== preset);
+      state.contacts.forEach(c => { if (c.followUpFrequency === preset.id) c.followUpFrequency = fallback.id; });
+      state.settings.followUpPresets = state.settings.followUpPresets.filter(p => p !== preset);
+      persistContacts();
+      persistSettings();
+      renderFollowUpPresetsEditor();
+      buildFollowUpOptions();
+      if (state.screen === 'people' || state.screen === 'contact-profile') refreshCurrentScreen();
+    });
+    row.appendChild(removeBtn);
+    list.appendChild(row);
   });
 }
 
@@ -1030,6 +1303,71 @@ function wireSettings() {
     applyTheme();
     setActiveThemeToggle(state.settings.theme);
   });
+  document.getElementById('accent-color-input').addEventListener('input', (e) => {
+    state.settings.accentColor = e.target.value;
+    applyAccentColor();
+    persistSettings();
+  });
+  document.getElementById('btn-reset-accent').addEventListener('click', () => {
+    state.settings.accentColor = DEFAULT_ACCENT;
+    document.getElementById('accent-color-input').value = DEFAULT_ACCENT;
+    applyAccentColor();
+    persistSettings();
+  });
+  document.getElementById('weekstart-toggle').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-weekstart-option]');
+    if (!btn) return;
+    state.settings.weekStartsOn = btn.dataset.weekstartOption;
+    persistSettings();
+    setActiveWeekStartToggle(state.settings.weekStartsOn);
+    document.getElementById('week-scroll').removeAttribute('data-scrolled');
+    refreshCurrentScreen();
+  });
+  document.getElementById('defaultview-toggle').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-defaultview-option]');
+    if (!btn) return;
+    state.settings.defaultView = btn.dataset.defaultviewOption;
+    persistSettings();
+    setActiveDefaultViewToggle(state.settings.defaultView);
+  });
+  document.getElementById('select-day-start-hour').addEventListener('change', (e) => {
+    const v = parseInt(e.target.value, 10);
+    if (v >= state.settings.dayEndHour) { showToast('Start hour must be before end hour'); e.target.value = String(state.settings.dayStartHour); return; }
+    state.settings.dayStartHour = v;
+    persistSettings();
+    document.getElementById('week-scroll').removeAttribute('data-scrolled');
+    refreshCurrentScreen();
+  });
+  document.getElementById('select-day-end-hour').addEventListener('change', (e) => {
+    const v = parseInt(e.target.value, 10);
+    if (v <= state.settings.dayStartHour) { showToast('End hour must be after start hour'); e.target.value = String(state.settings.dayEndHour); return; }
+    state.settings.dayEndHour = v;
+    persistSettings();
+    document.getElementById('week-scroll').removeAttribute('data-scrolled');
+    refreshCurrentScreen();
+  });
+  document.getElementById('btn-add-reminder-preset').addEventListener('click', () => {
+    const label = document.getElementById('new-reminder-label').value.trim();
+    const minutes = parseInt(document.getElementById('new-reminder-minutes').value, 10);
+    if (!label || !minutes || minutes <= 0) { showToast('Enter a label and minutes'); return; }
+    state.settings.reminderPresets.push({ minutes, label });
+    persistSettings();
+    document.getElementById('new-reminder-label').value = '';
+    document.getElementById('new-reminder-minutes').value = '';
+    renderReminderPresetsEditor();
+    buildReminderOptions();
+  });
+  document.getElementById('btn-add-followup-preset').addEventListener('click', () => {
+    const label = document.getElementById('new-followup-label').value.trim();
+    const days = parseInt(document.getElementById('new-followup-days').value, 10);
+    if (!label || !days || days <= 0) { showToast('Enter a label and days'); return; }
+    state.settings.followUpPresets.push({ id: uid(), label, days });
+    persistSettings();
+    document.getElementById('new-followup-label').value = '';
+    document.getElementById('new-followup-days').value = '';
+    renderFollowUpPresetsEditor();
+    buildFollowUpOptions();
+  });
   document.getElementById('btn-enable-notif').addEventListener('click', async () => {
     await requestNotificationPermission();
     updateNotifPermissionUI();
@@ -1039,6 +1377,7 @@ function wireSettings() {
       localStorage.removeItem(STORAGE_KEYS.events);
       localStorage.removeItem(STORAGE_KEYS.contacts);
       localStorage.removeItem(STORAGE_KEYS.settings);
+      localStorage.removeItem(STORAGE_KEYS.categories);
       localStorage.removeItem(STORAGE_KEYS.seeded);
       location.reload();
     }, { title: 'Clear all data', okLabel: 'Clear data' });
@@ -1079,7 +1418,7 @@ function checkReminders() {
     if (fireAt > now) return;
     if (now - fireAt < REMINDER_GRACE_MS) {
       const start = new Date(ev.start);
-      const cat = CATEGORIES[ev.category];
+      const cat = getCategoryMap()[ev.category];
       showNotification(ev.title, {
         body: `${formatTimeShort(start)}${cat ? ' · ' + cat.label : ''}`,
         icon: 'icons/icon-192.png',
@@ -1131,11 +1470,22 @@ function registerServiceWorker() {
 
 function init() {
   applyTheme();
+  applyAccentColor();
   seedDemoData();
 
   buildCategoryPicker();
-  buildEmojiGrid();
+  buildEmojiGrid('emoji-grid', EMOJI_CHOICES, (em) => {
+    state.selectedEmoji = em;
+    document.getElementById('contact-emoji-btn').textContent = em;
+  });
+  buildEmojiGrid('category-icon-grid', CATEGORY_ICON_CHOICES, (em) => {
+    state.selectedCategoryIcon = em;
+    document.getElementById('category-icon-btn').textContent = em;
+  });
   buildTagSuggestions();
+  buildReminderOptions();
+  buildFollowUpOptions();
+  buildHourSelects();
 
   wireGenericModalClosers();
   wireBottomNav();
@@ -1144,8 +1494,11 @@ function init() {
   wireEventForm();
   wireContactModalWidgets();
   wireContactForm();
+  wireCategoryModalWidgets();
+  wireCategoryForm();
   wireSettings();
 
+  setActiveViewToggle(state.view);
   switchScreen('calendar');
   registerServiceWorker();
   requestNotificationPermission().finally(updateNotifPermissionUI);

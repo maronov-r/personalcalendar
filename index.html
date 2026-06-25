@@ -128,6 +128,74 @@
             <button class="view-toggle-btn" id="btn-theme-auto" data-theme-option="auto">Auto</button>
           </div>
         </div>
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <span class="settings-row-label">Accent color</span>
+            <span class="settings-row-sub">Used for highlights, buttons, and glows.</span>
+          </div>
+          <div class="accent-color-controls">
+            <input class="color-input" id="accent-color-input" type="color" value="#00f5ff">
+            <button type="button" class="text-btn" id="btn-reset-accent">Reset</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h2 class="settings-heading">Categories</h2>
+        <div class="category-manager-list" id="category-manager-list"></div>
+        <button type="button" class="pill-btn pill-btn-accent" id="btn-add-category">+ Add category</button>
+      </div>
+
+      <div class="settings-group">
+        <h2 class="settings-heading">Calendar</h2>
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <span class="settings-row-label">Week starts on</span>
+          </div>
+          <div class="view-toggle" id="weekstart-toggle">
+            <button class="view-toggle-btn" id="btn-weekstart-monday" data-weekstart-option="monday">Mon</button>
+            <button class="view-toggle-btn" id="btn-weekstart-sunday" data-weekstart-option="sunday">Sun</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <span class="settings-row-label">Default view</span>
+          </div>
+          <div class="view-toggle" id="defaultview-toggle">
+            <button class="view-toggle-btn" id="btn-defaultview-week" data-defaultview-option="week">Week</button>
+            <button class="view-toggle-btn" id="btn-defaultview-month" data-defaultview-option="month">Month</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <span class="settings-row-label">Visible hours</span>
+            <span class="settings-row-sub">Range shown in the week view.</span>
+          </div>
+          <div class="hour-range-pickers">
+            <select class="field-input" id="select-day-start-hour"></select>
+            <span class="hour-range-sep">–</span>
+            <select class="field-input" id="select-day-end-hour"></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h2 class="settings-heading">Reminders &amp; Follow-ups</h2>
+        <span class="settings-row-label">Event reminder presets</span>
+        <div class="preset-list" id="reminder-preset-list"></div>
+        <div class="preset-add-row">
+          <input class="field-input" id="new-reminder-label" type="text" placeholder="Label, e.g. 2 hours before">
+          <input class="field-input preset-number-input" id="new-reminder-minutes" type="number" min="1" placeholder="Min">
+          <button type="button" class="pill-btn" id="btn-add-reminder-preset">Add</button>
+        </div>
+
+        <span class="settings-row-label settings-row-label-spaced">Follow-up presets</span>
+        <div class="preset-list" id="followup-preset-list"></div>
+        <div class="preset-add-row">
+          <input class="field-input" id="new-followup-label" type="text" placeholder="Label, e.g. Every 2 weeks">
+          <input class="field-input preset-number-input" id="new-followup-days" type="number" min="1" placeholder="Days">
+          <button type="button" class="pill-btn" id="btn-add-followup-preset">Add</button>
+        </div>
       </div>
 
       <div class="settings-group">
@@ -222,13 +290,7 @@
           <textarea class="field-input" id="event-notes" rows="3" placeholder="Optional details…"></textarea>
 
           <label class="field-label" for="event-reminder">Reminder</label>
-          <select class="field-input" id="event-reminder">
-            <option value="">No reminder</option>
-            <option value="10">10 minutes before</option>
-            <option value="30">30 minutes before</option>
-            <option value="60">1 hour before</option>
-            <option value="1440">1 day before</option>
-          </select>
+          <select class="field-input" id="event-reminder"></select>
 
           <label class="field-label">Who is this with?</label>
           <div class="contact-combobox" id="event-contact-combobox">
@@ -282,12 +344,7 @@
             </div>
             <div class="field-col">
               <label class="field-label" for="contact-frequency">Follow-up</label>
-              <select class="field-input" id="contact-frequency">
-                <option value="weekly">Weekly</option>
-                <option value="monthly" selected>Monthly</option>
-                <option value="quarterly">Every 3 months</option>
-                <option value="none">No reminder</option>
-              </select>
+              <select class="field-input" id="contact-frequency"></select>
             </div>
           </div>
 
@@ -298,6 +355,37 @@
           <button type="button" class="text-btn text-btn-danger hidden" id="contact-delete">Delete</button>
           <div class="modal-footer-spacer"></div>
           <button type="button" class="text-btn" data-close-modal="modal-contact">Cancel</button>
+          <button type="submit" class="pill-btn pill-btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Category modal -->
+  <div class="modal-overlay hidden" id="modal-category">
+    <div class="modal-sheet">
+      <form id="category-form">
+        <div class="modal-header">
+          <h2 class="modal-title" id="category-modal-title">New category</h2>
+          <button type="button" class="icon-btn" data-close-modal="modal-category">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="emoji-picker-row">
+            <button type="button" class="emoji-trigger" id="category-icon-btn">💼</button>
+            <div class="field-col">
+              <label class="field-label" for="category-label">Name</label>
+              <input class="field-input" id="category-label" type="text" placeholder="Category name" required>
+            </div>
+          </div>
+          <div class="emoji-grid hidden" id="category-icon-grid"></div>
+
+          <label class="field-label" for="category-color">Color</label>
+          <input class="color-input" id="category-color" type="color" value="#00f5ff">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="text-btn text-btn-danger hidden" id="category-delete">Delete</button>
+          <div class="modal-footer-spacer"></div>
+          <button type="button" class="text-btn" data-close-modal="modal-category">Cancel</button>
           <button type="submit" class="pill-btn pill-btn-primary">Save</button>
         </div>
       </form>
