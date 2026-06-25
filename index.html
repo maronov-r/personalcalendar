@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<title>Orbit — Your time. Your people.</title>
+<meta name="description" content="A personal calendar with a lightweight CRM. Your time. Your people.">
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a0a0f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Orbit">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="brand-orbit" aria-hidden="true"></span>
+      <span class="brand-name">Orbit</span>
+    </div>
+
+    <div class="topbar-controls" id="calendar-controls">
+      <button class="icon-btn" id="btn-prev" aria-label="Previous">‹</button>
+      <button class="pill-btn" id="btn-today">Today</button>
+      <button class="icon-btn" id="btn-next" aria-label="Next">›</button>
+      <div class="view-toggle">
+        <button class="view-toggle-btn active" id="btn-view-week" data-view="week">Week</button>
+        <button class="view-toggle-btn" id="btn-view-month" data-view="month">Month</button>
+      </div>
+    </div>
+
+    <div class="topbar-controls hidden" id="people-controls">
+      <button class="pill-btn pill-btn-accent" id="btn-add-contact">+ Add person</button>
+    </div>
+
+    <div class="topbar-controls hidden" id="profile-controls">
+      <button class="icon-btn" id="btn-back-people" aria-label="Back">‹</button>
+      <span class="topbar-title" id="profile-title">Contact</span>
+    </div>
+
+    <div class="topbar-controls hidden" id="settings-controls">
+      <span class="topbar-title">Settings</span>
+    </div>
+  </header>
+
+  <main id="main-content">
+
+    <section class="screen" id="screen-calendar">
+      <div class="calendar-label" id="calendar-label"></div>
+
+      <div class="month-view hidden" id="month-view">
+        <div class="month-weekday-row" id="month-weekday-row"></div>
+        <div class="month-grid" id="month-grid"></div>
+      </div>
+
+      <div class="week-view" id="week-view">
+        <div class="week-scroll" id="week-scroll">
+          <div class="week-grid">
+            <div class="grid-corner"></div>
+            <div class="week-header" id="week-header"></div>
+            <div class="hours-col" id="hours-col"></div>
+            <div class="days-grid" id="days-grid"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen hidden" id="screen-people">
+      <div class="empty-state hidden" id="people-empty">
+        <div class="empty-orbit"></div>
+        <p class="empty-title">No people yet</p>
+        <p class="empty-sub">Add the people you care about and never lose touch.</p>
+      </div>
+
+      <div class="crm-section" id="section-overdue">
+        <h2 class="crm-heading crm-heading-overdue">Overdue — reach out</h2>
+        <div class="contact-list" id="list-overdue"></div>
+      </div>
+      <div class="crm-section" id="section-upcoming">
+        <h2 class="crm-heading crm-heading-upcoming">Coming up</h2>
+        <div class="contact-list" id="list-upcoming"></div>
+      </div>
+      <div class="crm-section" id="section-good">
+        <h2 class="crm-heading crm-heading-good">All good</h2>
+        <div class="contact-list" id="list-good"></div>
+      </div>
+    </section>
+
+    <section class="screen hidden" id="screen-contact-profile">
+      <div id="profile-content"></div>
+    </section>
+
+    <section class="screen hidden" id="screen-settings">
+      <div class="settings-group">
+        <h2 class="settings-heading">Notifications</h2>
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <span class="settings-row-label">Daily 8am digest</span>
+            <span class="settings-row-sub">A morning summary of today's events.</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="toggle-digest">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="settings-row" id="row-notif-permission">
+          <div class="settings-row-text">
+            <span class="settings-row-label">Browser permission</span>
+            <span class="settings-row-sub" id="notif-permission-status">Checking…</span>
+          </div>
+          <button class="pill-btn pill-btn-accent" id="btn-enable-notif">Enable</button>
+        </div>
+        <p class="settings-note">Reminders fire while Orbit is open or running in the background. Keep it installed on your home screen for the best results — there's no server, so it can't wake your phone while fully closed.</p>
+      </div>
+
+      <div class="settings-group" id="install-group">
+        <h2 class="settings-heading">Install Orbit</h2>
+        <div id="install-content"></div>
+      </div>
+
+      <div class="settings-group">
+        <h2 class="settings-heading">Data</h2>
+        <button class="pill-btn pill-btn-danger" id="btn-clear-data">Clear all data</button>
+      </div>
+
+      <div class="settings-footer">
+        <div class="brand-orbit brand-orbit-lg" aria-hidden="true"></div>
+        <p class="settings-app-name">Orbit</p>
+        <p class="settings-tagline">Your time. Your people.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-screen="calendar">
+      <span class="nav-icon">📅</span><span class="nav-label">Calendar</span>
+    </button>
+    <button class="nav-btn" data-screen="people">
+      <span class="nav-icon">👥</span><span class="nav-label">People</span>
+    </button>
+    <button class="nav-btn nav-btn-add" id="btn-quick-add" aria-label="Quick add">
+      <span class="nav-add-icon">+</span>
+    </button>
+    <button class="nav-btn" data-screen="settings">
+      <span class="nav-icon">⚙️</span><span class="nav-label">Settings</span>
+    </button>
+  </nav>
+
+  <!-- Event modal -->
+  <div class="modal-overlay hidden" id="modal-event">
+    <div class="modal-sheet">
+      <form id="event-form">
+        <div class="modal-header">
+          <h2 class="modal-title" id="event-modal-title">New event</h2>
+          <button type="button" class="icon-btn" data-close-modal="modal-event">×</button>
+        </div>
+        <div class="modal-body">
+          <label class="field-label" for="event-title">Title</label>
+          <input class="field-input" id="event-title" type="text" placeholder="What's happening?" required>
+
+          <div class="field-row">
+            <div class="field-col">
+              <label class="field-label" for="event-date">Date</label>
+              <input class="field-input" id="event-date" type="date" required>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field-col">
+              <label class="field-label" for="event-start">Start</label>
+              <input class="field-input" id="event-start" type="time" required>
+            </div>
+            <div class="field-col">
+              <label class="field-label" for="event-end">End</label>
+              <input class="field-input" id="event-end" type="time" required>
+            </div>
+          </div>
+
+          <label class="field-label">Category</label>
+          <div class="category-picker" id="category-picker"></div>
+
+          <label class="field-label" for="event-notes">Notes</label>
+          <textarea class="field-input" id="event-notes" rows="3" placeholder="Optional details…"></textarea>
+
+          <label class="field-label" for="event-reminder">Reminder</label>
+          <select class="field-input" id="event-reminder">
+            <option value="">No reminder</option>
+            <option value="10">10 minutes before</option>
+            <option value="30">30 minutes before</option>
+            <option value="60">1 hour before</option>
+            <option value="1440">1 day before</option>
+          </select>
+
+          <label class="field-label">Who is this with?</label>
+          <div class="contact-combobox" id="event-contact-combobox">
+            <div class="contact-chip hidden" id="event-contact-chip">
+              <span id="event-contact-chip-label"></span>
+              <button type="button" class="chip-remove" id="event-contact-chip-remove">×</button>
+            </div>
+            <input class="field-input" id="event-contact-search" type="text" placeholder="Search contacts…" autocomplete="off">
+            <div class="combobox-results hidden" id="event-contact-results"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="text-btn text-btn-danger hidden" id="event-delete">Delete</button>
+          <div class="modal-footer-spacer"></div>
+          <button type="button" class="text-btn" data-close-modal="modal-event">Cancel</button>
+          <button type="submit" class="pill-btn pill-btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Contact modal -->
+  <div class="modal-overlay hidden" id="modal-contact">
+    <div class="modal-sheet">
+      <form id="contact-form">
+        <div class="modal-header">
+          <h2 class="modal-title" id="contact-modal-title">New person</h2>
+          <button type="button" class="icon-btn" data-close-modal="modal-contact">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="emoji-picker-row">
+            <button type="button" class="emoji-trigger" id="contact-emoji-btn">🙂</button>
+            <div class="field-col">
+              <label class="field-label" for="contact-name">Name</label>
+              <input class="field-input" id="contact-name" type="text" placeholder="Full name" required>
+            </div>
+          </div>
+          <div class="emoji-grid hidden" id="emoji-grid"></div>
+
+          <label class="field-label">Tags</label>
+          <div class="tag-input-wrap">
+            <div class="tag-chips" id="contact-tag-chips"></div>
+            <input class="field-input" id="contact-tag-input" type="text" placeholder="Type a tag and press Enter…">
+          </div>
+          <div class="tag-suggestions" id="tag-suggestions"></div>
+
+          <div class="field-row">
+            <div class="field-col">
+              <label class="field-label" for="contact-lastseen">Last seen</label>
+              <input class="field-input" id="contact-lastseen" type="date">
+            </div>
+            <div class="field-col">
+              <label class="field-label" for="contact-frequency">Follow-up</label>
+              <select class="field-input" id="contact-frequency">
+                <option value="weekly">Weekly</option>
+                <option value="monthly" selected>Monthly</option>
+                <option value="quarterly">Every 3 months</option>
+                <option value="none">No reminder</option>
+              </select>
+            </div>
+          </div>
+
+          <label class="field-label" for="contact-notes">Notes</label>
+          <textarea class="field-input" id="contact-notes" rows="3" placeholder="Optional details…"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="text-btn text-btn-danger hidden" id="contact-delete">Delete</button>
+          <div class="modal-footer-spacer"></div>
+          <button type="button" class="text-btn" data-close-modal="modal-contact">Cancel</button>
+          <button type="submit" class="pill-btn pill-btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Confirm modal -->
+  <div class="modal-overlay hidden" id="modal-confirm">
+    <div class="modal-sheet modal-sheet-small">
+      <div class="modal-header">
+        <h2 class="modal-title" id="confirm-title">Are you sure?</h2>
+      </div>
+      <div class="modal-body">
+        <p id="confirm-message" class="confirm-message"></p>
+      </div>
+      <div class="modal-footer">
+        <div class="modal-footer-spacer"></div>
+        <button type="button" class="text-btn" id="confirm-cancel">Cancel</button>
+        <button type="button" class="pill-btn pill-btn-danger" id="confirm-ok">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toast-container"></div>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
