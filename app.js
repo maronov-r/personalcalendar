@@ -744,10 +744,20 @@ function layoutDayEvents(items) {
   return result;
 }
 
+const DRAG_STEP_MIN = 15;
+const DRAG_STEP_PX = (HOUR_HEIGHT * DRAG_STEP_MIN) / 60;
+
+function dateAtMinutes(day, minutes) {
+  const d = new Date(day);
+  d.setHours(0, minutes, 0, 0);
+  return d;
+}
+
 function renderEventPill(p) {
   const cat = getCategory(p.ev.category);
   const pill = document.createElement('div');
   pill.className = 'event-pill';
+  pill.dataset.eventId = p.ev.id;
   const top = ((p.startMin - getDayStartHour() * 60) / 60) * HOUR_HEIGHT;
   const height = Math.max(((p.endMin - p.startMin) / 60) * HOUR_HEIGHT, 26);
   pill.style.top = `${top}px`;
@@ -762,9 +772,139 @@ function renderEventPill(p) {
   pill.innerHTML = `
     <span class="event-pill-title"><span class="event-pill-icon">${cat.icon}</span>${escapeHtml(p.ev.title)}</span>
     <span class="event-pill-time">${formatTimeShort(start)} – ${formatTimeShort(end)}</span>
+    <div class="event-pill-resize-handle" aria-hidden="true"></div>
   `;
-  pill.addEventListener('click', (e) => { e.stopPropagation(); openEventModal(p.ev.id); });
+
+  attachPillMoveDrag(pill, p);
+  attachPillResizeDrag(pill, p);
   return pill;
+}
+
+function attachPillMoveDrag(pill, p) {
+  let dragging = false, moved = false;
+  let startX = 0, startY = 0, initialTop = 0, initialHeight = 0;
+  let duration = p.endMin - p.startMin;
+
+  pill.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.event-pill-resize-handle')) return;
+    e.stopPropagation();
+    dragging = true; moved = false;
+    startX = e.clientX; startY = e.clientY;
+    initialTop = parseFloat(pill.style.top);
+    initialHeight = pill.offsetHeight;
+    pill.setPointerCapture(e.pointerId);
+  });
+
+  pill.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    if (!moved && Math.hypot(dx, dy) < 4) return;
+    if (!moved) {
+      moved = true;
+      pill.classList.add('is-dragging');
+      document.body.classList.add('is-dragging-event');
+    }
+    const dayStartHour = getDayStartHour(), dayEndHour = getDayEndHour();
+    const maxTop = (dayEndHour - dayStartHour) * HOUR_HEIGHT - initialHeight;
+    let newTop = Math.min(Math.max(initialTop + dy, 0), Math.max(maxTop, 0));
+    newTop = Math.round(newTop / DRAG_STEP_PX) * DRAG_STEP_PX;
+
+    const daysGrid = document.getElementById('days-grid');
+    const cols = Array.from(daysGrid.children);
+    const targetCol = document.elementFromPoint(e.clientX, e.clientY)?.closest('.day-col');
+    cols.forEach(c => c.classList.toggle('is-drop-target', c === targetCol));
+    if (targetCol && targetCol !== pill.parentElement) targetCol.appendChild(pill);
+
+    pill.style.top = `${newTop}px`;
+    const newStartMin = dayStartHour * 60 + (newTop / HOUR_HEIGHT) * 60;
+    const startLbl = formatTimeShort(dateAtMinutes(new Date(), newStartMin));
+    const endLbl = formatTimeShort(dateAtMinutes(new Date(), newStartMin + duration));
+    pill.querySelector('.event-pill-time').textContent = `${startLbl} – ${endLbl}`;
+  });
+
+  const finishDrag = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    document.querySelectorAll('.day-col.is-drop-target').forEach(c => c.classList.remove('is-drop-target'));
+    if (!moved) return;
+    pill.classList.remove('is-dragging');
+    document.body.classList.remove('is-dragging-event');
+
+    const daysGrid = document.getElementById('days-grid');
+    const cols = Array.from(daysGrid.children);
+    const colIndex = cols.indexOf(pill.parentElement);
+    const weekStart = startOfWeek(state.currentDate);
+    const targetDay = colIndex >= 0 ? addDays(weekStart, colIndex) : new Date(p.ev.start);
+
+    const dayStartHour = getDayStartHour();
+    const newTop = parseFloat(pill.style.top);
+    const newStartMin = dayStartHour * 60 + (newTop / HOUR_HEIGHT) * 60;
+    const newStart = dateAtMinutes(targetDay, newStartMin);
+    const newEnd = dateAtMinutes(targetDay, newStartMin + duration);
+    p.ev.start = newStart.toISOString();
+    p.ev.end = newEnd.toISOString();
+    persistEvents();
+    renderCalendar();
+  };
+
+  pill.addEventListener('pointerup', finishDrag);
+  pill.addEventListener('pointercancel', finishDrag);
+
+  pill.addEventListener('click', (e) => {
+    if (moved) { e.stopPropagation(); moved = false; return; }
+    e.stopPropagation();
+    openEventModal(p.ev.id);
+  });
+}
+
+function attachPillResizeDrag(pill, p) {
+  const handle = pill.querySelector('.event-pill-resize-handle');
+  let resizing = false, startY = 0, initialHeight = 0;
+
+  handle.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    resizing = true;
+    startY = e.clientY;
+    initialHeight = pill.offsetHeight;
+    handle.setPointerCapture(e.pointerId);
+    pill.classList.add('is-resizing');
+  });
+
+  handle.addEventListener('pointermove', (e) => {
+    if (!resizing) return;
+    e.stopPropagation();
+    const dayStartHour = getDayStartHour(), dayEndHour = getDayEndHour();
+    const top = parseFloat(pill.style.top);
+    const maxHeight = (dayEndHour - dayStartHour) * HOUR_HEIGHT - top;
+    let newHeight = Math.min(Math.max(initialHeight + (e.clientY - startY), DRAG_STEP_PX), Math.max(maxHeight, DRAG_STEP_PX));
+    newHeight = Math.round(newHeight / DRAG_STEP_PX) * DRAG_STEP_PX;
+    pill.style.height = `${newHeight}px`;
+    pill.classList.toggle('is-short', newHeight < 38);
+
+    const startMin = dayStartHour * 60 + (top / HOUR_HEIGHT) * 60;
+    const endMin = startMin + (newHeight / HOUR_HEIGHT) * 60;
+    const startLbl = formatTimeShort(dateAtMinutes(new Date(), startMin));
+    const endLbl = formatTimeShort(dateAtMinutes(new Date(), endMin));
+    pill.querySelector('.event-pill-time').textContent = `${startLbl} – ${endLbl}`;
+  });
+
+  const finishResize = (e) => {
+    if (!resizing) return;
+    resizing = false;
+    pill.classList.remove('is-resizing');
+    const dayStartHour = getDayStartHour();
+    const top = parseFloat(pill.style.top);
+    const height = pill.offsetHeight;
+    const startMin = dayStartHour * 60 + (top / HOUR_HEIGHT) * 60;
+    const endMin = startMin + (height / HOUR_HEIGHT) * 60;
+    const startD = new Date(p.ev.start);
+    p.ev.end = dateAtMinutes(startD, endMin).toISOString();
+    persistEvents();
+    renderCalendar();
+  };
+
+  handle.addEventListener('pointerup', finishResize);
+  handle.addEventListener('pointercancel', finishResize);
 }
 
 function renderWeek() {

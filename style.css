@@ -434,14 +434,51 @@ a { color: var(--cyan); }
   padding: 3px 6px;
   overflow: hidden;
   background: var(--cat-color, var(--cyan));
-  cursor: pointer;
-  transition: transform var(--ease), filter var(--ease);
+  cursor: grab;
+  transition: transform var(--ease), filter var(--ease), box-shadow var(--ease);
   display: flex;
   flex-direction: column;
   z-index: 2;
   border-left: 3px solid color-mix(in srgb, var(--cat-color, var(--cyan)) 70%, black);
+  touch-action: none;
+  user-select: none;
 }
 .event-pill:active { transform: scale(0.97); filter: brightness(0.92); }
+.event-pill.is-dragging,
+.event-pill.is-resizing {
+  z-index: 10;
+  cursor: grabbing;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  filter: brightness(1.05);
+  transform: scale(1.02);
+}
+body.is-dragging-event .event-pill:not(.is-dragging) {
+  opacity: 0.45;
+}
+.day-col.is-drop-target {
+  background: rgba(var(--cyan-rgb), 0.06);
+}
+.event-pill-resize-handle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 10px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.event-pill-resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 22px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(4, 20, 26, 0.35);
+  transform: translateX(-50%);
+}
+.event-pill.is-short .event-pill-resize-handle { display: none; }
 .event-pill-title {
   font-size: 11px;
   font-weight: 600;
