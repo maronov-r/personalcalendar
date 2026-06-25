@@ -310,8 +310,7 @@ a { color: var(--cyan); }
 
 .day-head {
   text-align: center;
-  padding: 6px 2px;
-  border-radius: var(--radius-sm);
+  padding: 6px 2px 8px;
   cursor: pointer;
 }
 .day-head-dow {
@@ -323,18 +322,22 @@ a { color: var(--cyan); }
   letter-spacing: 0.5px;
 }
 .day-head-num {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 15px;
-  margin-top: 2px;
-}
-.day-head.is-today {
-  background: rgba(var(--cyan-rgb), 0.1);
+  margin-top: 3px;
+  border-radius: 50%;
+  transition: background var(--ease), color var(--ease);
 }
 .day-head.is-today .day-head-num {
-  color: var(--cyan);
-  text-shadow: 0 0 8px rgba(var(--cyan-rgb), 0.6);
+  background: var(--cyan);
+  color: #04141a;
+  box-shadow: 0 0 10px rgba(var(--cyan-rgb), 0.5);
 }
 
 .week-scroll {
@@ -389,19 +392,19 @@ a { color: var(--cyan); }
   display: grid;
   grid-template-columns: repeat(7, var(--day-col-width));
   position: relative;
-  gap: 2px;
+  gap: 0;
   grid-column: 2;
   grid-row: 2;
 }
 
 .day-col {
   position: relative;
-  border-left: 1px solid rgba(var(--cyan-rgb), 0.06);
+  border-left: 1px solid var(--border);
   cursor: pointer;
 }
 .hour-line {
   height: 56px;
-  border-bottom: 1px solid rgba(var(--cyan-rgb), 0.06);
+  border-bottom: 1px solid var(--border);
   box-sizing: border-box;
 }
 
@@ -410,8 +413,7 @@ a { color: var(--cyan); }
   left: 0;
   right: 0;
   height: 0;
-  border-top: 2px solid var(--amber);
-  box-shadow: 0 0 6px rgba(245, 166, 35, 0.8);
+  border-top: 1.5px solid var(--amber);
   z-index: 5;
   pointer-events: none;
 }
@@ -419,33 +421,31 @@ a { color: var(--cyan); }
   content: '';
   position: absolute;
   left: -3px;
-  top: -4px;
-  width: 8px;
-  height: 8px;
+  top: -3px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--amber);
-  box-shadow: 0 0 8px rgba(245, 166, 35, 0.9);
 }
 
 .event-pill {
   position: absolute;
-  border-radius: var(--radius-lg);
-  padding: 4px 8px;
+  border-radius: 6px;
+  padding: 3px 6px;
   overflow: hidden;
-  background: rgba(18, 18, 26, 0.92);
-  border: 1.5px solid var(--cat-color, var(--cyan));
-  box-shadow: 0 0 10px var(--cat-glow, rgba(0, 245, 255, 0.35)), inset 0 0 12px rgba(0,0,0,0.3);
+  background: var(--cat-color, var(--cyan));
   cursor: pointer;
-  transition: transform var(--ease), box-shadow var(--ease);
+  transition: transform var(--ease), filter var(--ease);
   display: flex;
   flex-direction: column;
   z-index: 2;
+  border-left: 3px solid color-mix(in srgb, var(--cat-color, var(--cyan)) 70%, black);
 }
-.event-pill:active { transform: scale(0.97); }
+.event-pill:active { transform: scale(0.97); filter: brightness(0.92); }
 .event-pill-title {
   font-size: 11px;
   font-weight: 600;
-  color: var(--text);
+  color: #04141a;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -454,7 +454,7 @@ a { color: var(--cyan); }
 .event-pill-time {
   font-family: var(--font-mono);
   font-size: 9px;
-  color: var(--text-muted);
+  color: rgba(4, 20, 26, 0.65);
   white-space: nowrap;
   overflow: hidden;
 }
@@ -483,33 +483,41 @@ a { color: var(--cyan); }
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   grid-auto-rows: minmax(58px, 1fr);
-  gap: 4px;
+  gap: 0;
   flex: 1;
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
 }
 
 .month-cell {
-  border-radius: var(--radius-sm);
   background: var(--surface);
-  border: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   padding: 5px;
   display: flex;
   flex-direction: column;
   cursor: pointer;
-  transition: box-shadow var(--ease);
+  transition: background var(--ease);
   min-height: 0;
   overflow: hidden;
 }
-.month-cell.is-today {
-  border-color: var(--cyan);
-  box-shadow: 0 0 10px rgba(var(--cyan-rgb), 0.25);
-}
 .month-cell.is-other-month { opacity: 0.35; }
 .month-cell-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-muted);
+  border-radius: 50%;
 }
-.month-cell.is-today .month-cell-num { color: var(--cyan); font-weight: 700; }
+.month-cell.is-today .month-cell-num {
+  background: var(--cyan);
+  color: #04141a;
+  font-weight: 700;
+}
 .month-cell-dots {
   display: flex;
   flex-wrap: wrap;
