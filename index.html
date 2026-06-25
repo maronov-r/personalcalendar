@@ -195,6 +195,42 @@
       </div>
 
       <div class="settings-group">
+        <h2 class="settings-heading">Event bubbles</h2>
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <span class="settings-row-label">Size</span>
+            <span class="settings-row-sub">Row height in week view.</span>
+          </div>
+          <div class="view-toggle" id="bubbledensity-toggle">
+            <button class="view-toggle-btn" id="btn-density-compact" data-density-option="compact">Compact</button>
+            <button class="view-toggle-btn" id="btn-density-comfortable" data-density-option="comfortable">Comfortable</button>
+            <button class="view-toggle-btn" id="btn-density-spacious" data-density-option="spacious">Spacious</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <span class="settings-row-label">Corners</span>
+            <span class="settings-row-sub">Shape of event bubbles.</span>
+          </div>
+          <div class="view-toggle" id="bubbleradius-toggle">
+            <button class="view-toggle-btn" id="btn-radius-sharp" data-radius-option="sharp">Sharp</button>
+            <button class="view-toggle-btn" id="btn-radius-rounded" data-radius-option="rounded">Rounded</button>
+            <button class="view-toggle-btn" id="btn-radius-pill" data-radius-option="pill">Pill</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <span class="settings-row-label">Fill style</span>
+            <span class="settings-row-sub">Solid color blocks or outlined cards.</span>
+          </div>
+          <div class="view-toggle" id="bubblestyle-toggle">
+            <button class="view-toggle-btn" id="btn-bubblestyle-solid" data-bubblestyle-option="solid">Solid</button>
+            <button class="view-toggle-btn" id="btn-bubblestyle-outline" data-bubblestyle-option="outline">Outline</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-group">
         <h2 class="settings-heading">Reminders &amp; Follow-ups</h2>
         <span class="settings-row-label">Event reminder presets</span>
         <div class="preset-list" id="reminder-preset-list"></div>

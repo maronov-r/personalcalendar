@@ -57,7 +57,8 @@ const CATEGORY_ICON_CHOICES = ['💼','🎉','🏃','🧾','🍽️','📚','�
 
 const TAG_SUGGESTIONS = ['close friend', 'friend', 'family', 'colleague', 'acquaintance'];
 
-const HOUR_HEIGHT = 56; // px — keep in sync with style.css .hour-line/.hour-label
+const DENSITY_HOUR_HEIGHTS = { compact: 40, comfortable: 56, spacious: 76 };
+function getHourHeight() { return DENSITY_HOUR_HEIGHTS[state.settings.bubbleDensity] || DENSITY_HOUR_HEIGHTS.comfortable; }
 
 const REMINDER_GRACE_MS = 2 * 60 * 60 * 1000; // ignore reminders more than 2h stale
 const DIGEST_HOUR = 8;
@@ -91,6 +92,9 @@ const initialSettings = Object.assign({
   defaultView: 'week',
   dayStartHour: 0,
   dayEndHour: 24,
+  bubbleDensity: 'comfortable',
+  bubbleRadius: 'rounded',
+  bubbleStyle: 'solid',
   reminderPresets: DEFAULT_REMINDER_PRESETS.map(p => Object.assign({}, p)),
   followUpPresets: DEFAULT_FOLLOWUP_PRESETS.map(p => Object.assign({}, p)),
   peopleView: 'list',
@@ -213,6 +217,7 @@ function applyRemoteDoc(remote) {
 
   applyTheme();
   applyAccentColor();
+  applyBubbleSettings();
   buildCategoryPicker();
   buildCirclePicker();
   buildReminderOptions();
@@ -470,6 +475,13 @@ function applyAccentColor() {
   const color = state.settings.accentColor || DEFAULT_ACCENT;
   document.documentElement.style.setProperty('--cyan', color);
   document.documentElement.style.setProperty('--cyan-rgb', hexToRgbTriplet(color));
+}
+
+const BUBBLE_RADIUS_PX = { sharp: 2, rounded: 6, pill: 14 };
+function applyBubbleSettings() {
+  const radius = BUBBLE_RADIUS_PX[state.settings.bubbleRadius] ?? BUBBLE_RADIUS_PX.rounded;
+  document.documentElement.style.setProperty('--bubble-radius', `${radius}px`);
+  document.documentElement.setAttribute('data-bubble-style', state.settings.bubbleStyle || 'solid');
 }
 
 /* ===================== Date utils ===================== */
@@ -745,7 +757,7 @@ function layoutDayEvents(items) {
 }
 
 const DRAG_STEP_MIN = 15;
-const DRAG_STEP_PX = (HOUR_HEIGHT * DRAG_STEP_MIN) / 60;
+function getDragStepPx() { return (getHourHeight() * DRAG_STEP_MIN) / 60; }
 
 function dateAtMinutes(day, minutes) {
   const d = new Date(day);
@@ -758,8 +770,8 @@ function renderEventPill(p) {
   const pill = document.createElement('div');
   pill.className = 'event-pill';
   pill.dataset.eventId = p.ev.id;
-  const top = ((p.startMin - getDayStartHour() * 60) / 60) * HOUR_HEIGHT;
-  const height = Math.max(((p.endMin - p.startMin) / 60) * HOUR_HEIGHT, 26);
+  const top = ((p.startMin - getDayStartHour() * 60) / 60) * getHourHeight();
+  const height = Math.max(((p.endMin - p.startMin) / 60) * getHourHeight(), 26);
   pill.style.top = `${top}px`;
   pill.style.height = `${height}px`;
   pill.style.left = `${(p.col / p.totalCols) * 100}%`;
@@ -805,9 +817,9 @@ function attachPillMoveDrag(pill, p) {
       document.body.classList.add('is-dragging-event');
     }
     const dayStartHour = getDayStartHour(), dayEndHour = getDayEndHour();
-    const maxTop = (dayEndHour - dayStartHour) * HOUR_HEIGHT - initialHeight;
+    const maxTop = (dayEndHour - dayStartHour) * getHourHeight() - initialHeight;
     let newTop = Math.min(Math.max(initialTop + dy, 0), Math.max(maxTop, 0));
-    newTop = Math.round(newTop / DRAG_STEP_PX) * DRAG_STEP_PX;
+    newTop = Math.round(newTop / getDragStepPx()) * getDragStepPx();
 
     const daysGrid = document.getElementById('days-grid');
     const cols = Array.from(daysGrid.children);
@@ -816,7 +828,7 @@ function attachPillMoveDrag(pill, p) {
     if (targetCol && targetCol !== pill.parentElement) targetCol.appendChild(pill);
 
     pill.style.top = `${newTop}px`;
-    const newStartMin = dayStartHour * 60 + (newTop / HOUR_HEIGHT) * 60;
+    const newStartMin = dayStartHour * 60 + (newTop / getHourHeight()) * 60;
     const startLbl = formatTimeShort(dateAtMinutes(new Date(), newStartMin));
     const endLbl = formatTimeShort(dateAtMinutes(new Date(), newStartMin + duration));
     pill.querySelector('.event-pill-time').textContent = `${startLbl} – ${endLbl}`;
@@ -838,7 +850,7 @@ function attachPillMoveDrag(pill, p) {
 
     const dayStartHour = getDayStartHour();
     const newTop = parseFloat(pill.style.top);
-    const newStartMin = dayStartHour * 60 + (newTop / HOUR_HEIGHT) * 60;
+    const newStartMin = dayStartHour * 60 + (newTop / getHourHeight()) * 60;
     const newStart = dateAtMinutes(targetDay, newStartMin);
     const newEnd = dateAtMinutes(targetDay, newStartMin + duration);
     p.ev.start = newStart.toISOString();
@@ -875,14 +887,14 @@ function attachPillResizeDrag(pill, p) {
     e.stopPropagation();
     const dayStartHour = getDayStartHour(), dayEndHour = getDayEndHour();
     const top = parseFloat(pill.style.top);
-    const maxHeight = (dayEndHour - dayStartHour) * HOUR_HEIGHT - top;
-    let newHeight = Math.min(Math.max(initialHeight + (e.clientY - startY), DRAG_STEP_PX), Math.max(maxHeight, DRAG_STEP_PX));
-    newHeight = Math.round(newHeight / DRAG_STEP_PX) * DRAG_STEP_PX;
+    const maxHeight = (dayEndHour - dayStartHour) * getHourHeight() - top;
+    let newHeight = Math.min(Math.max(initialHeight + (e.clientY - startY), getDragStepPx()), Math.max(maxHeight, getDragStepPx()));
+    newHeight = Math.round(newHeight / getDragStepPx()) * getDragStepPx();
     pill.style.height = `${newHeight}px`;
     pill.classList.toggle('is-short', newHeight < 38);
 
-    const startMin = dayStartHour * 60 + (top / HOUR_HEIGHT) * 60;
-    const endMin = startMin + (newHeight / HOUR_HEIGHT) * 60;
+    const startMin = dayStartHour * 60 + (top / getHourHeight()) * 60;
+    const endMin = startMin + (newHeight / getHourHeight()) * 60;
     const startLbl = formatTimeShort(dateAtMinutes(new Date(), startMin));
     const endLbl = formatTimeShort(dateAtMinutes(new Date(), endMin));
     pill.querySelector('.event-pill-time').textContent = `${startLbl} – ${endLbl}`;
@@ -895,8 +907,8 @@ function attachPillResizeDrag(pill, p) {
     const dayStartHour = getDayStartHour();
     const top = parseFloat(pill.style.top);
     const height = pill.offsetHeight;
-    const startMin = dayStartHour * 60 + (top / HOUR_HEIGHT) * 60;
-    const endMin = startMin + (height / HOUR_HEIGHT) * 60;
+    const startMin = dayStartHour * 60 + (top / getHourHeight()) * 60;
+    const endMin = startMin + (height / getHourHeight()) * 60;
     const startD = new Date(p.ev.start);
     p.ev.end = dateAtMinutes(startD, endMin).toISOString();
     persistEvents();
@@ -926,11 +938,14 @@ function renderWeek() {
 
   const dayStartHour = getDayStartHour(), dayEndHour = getDayEndHour();
 
+  const hourHeight = getHourHeight();
+
   const hoursCol = document.getElementById('hours-col');
   hoursCol.innerHTML = '';
   for (let h = dayStartHour; h < dayEndHour; h++) {
     const lbl = document.createElement('div');
     lbl.className = 'hour-label';
+    lbl.style.height = `${hourHeight}px`;
     lbl.textContent = formatHourLabel(h);
     hoursCol.appendChild(lbl);
   }
@@ -941,10 +956,11 @@ function renderWeek() {
     const d = days[i];
     const col = document.createElement('div');
     col.className = 'day-col';
-    col.style.height = `${(dayEndHour - dayStartHour) * HOUR_HEIGHT}px`;
+    col.style.height = `${(dayEndHour - dayStartHour) * hourHeight}px`;
     for (let h = dayStartHour; h < dayEndHour; h++) {
       const line = document.createElement('div');
       line.className = 'hour-line';
+      line.style.height = `${hourHeight}px`;
       col.appendChild(line);
     }
 
@@ -952,7 +968,7 @@ function renderWeek() {
       if (e.target.closest('.event-pill')) return;
       const rect = col.getBoundingClientRect();
       const offsetY = e.clientY - rect.top;
-      const minutesFromStart = (offsetY / HOUR_HEIGHT) * 60;
+      const minutesFromStart = (offsetY / getHourHeight()) * 60;
       const snapped = Math.round((dayStartHour * 60 + minutesFromStart) / 30) * 30;
       const startD = new Date(d);
       startD.setHours(0, snapped, 0, 0);
@@ -973,7 +989,7 @@ function renderWeek() {
       const nowMin = minutesOf(today);
       const line = document.createElement('div');
       line.className = 'now-line';
-      line.style.top = `${((nowMin - dayStartHour * 60) / 60) * HOUR_HEIGHT}px`;
+      line.style.top = `${((nowMin - dayStartHour * 60) / 60) * getHourHeight()}px`;
       col.appendChild(line);
     }
 
@@ -982,7 +998,7 @@ function renderWeek() {
 
   const scrollEl = document.getElementById('week-scroll');
   if (!scrollEl.dataset.scrolled) {
-    scrollEl.scrollTop = Math.max(0, (7 - dayStartHour) * HOUR_HEIGHT - 40);
+    scrollEl.scrollTop = Math.max(0, (7 - dayStartHour) * getHourHeight() - 40);
     scrollEl.dataset.scrolled = '1';
   }
 }
@@ -1860,6 +1876,9 @@ function renderSettings() {
   setActiveDefaultViewToggle(state.settings.defaultView);
   document.getElementById('select-day-start-hour').value = String(state.settings.dayStartHour);
   document.getElementById('select-day-end-hour').value = String(state.settings.dayEndHour);
+  setActiveToggle('bubbledensity-toggle', 'densityOption', state.settings.bubbleDensity);
+  setActiveToggle('bubbleradius-toggle', 'radiusOption', state.settings.bubbleRadius);
+  setActiveToggle('bubblestyle-toggle', 'bubblestyleOption', state.settings.bubbleStyle);
   renderReminderPresetsEditor();
   renderFollowUpPresetsEditor();
   updateNotifPermissionUI();
@@ -1880,6 +1899,11 @@ function setActiveWeekStartToggle(value) {
 function setActiveDefaultViewToggle(value) {
   document.querySelectorAll('#defaultview-toggle .view-toggle-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.defaultviewOption === value);
+  });
+}
+function setActiveToggle(groupId, datasetKey, value) {
+  document.querySelectorAll(`#${groupId} .view-toggle-btn`).forEach(btn => {
+    btn.classList.toggle('active', btn.dataset[datasetKey] === value);
   });
 }
 
@@ -2019,6 +2043,31 @@ function wireSettings() {
     document.getElementById('week-scroll').removeAttribute('data-scrolled');
     refreshCurrentScreen();
   });
+  document.getElementById('bubbledensity-toggle').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-density-option]');
+    if (!btn) return;
+    state.settings.bubbleDensity = btn.dataset.densityOption;
+    persistSettings();
+    setActiveToggle('bubbledensity-toggle', 'densityOption', state.settings.bubbleDensity);
+    document.getElementById('week-scroll').removeAttribute('data-scrolled');
+    refreshCurrentScreen();
+  });
+  document.getElementById('bubbleradius-toggle').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-radius-option]');
+    if (!btn) return;
+    state.settings.bubbleRadius = btn.dataset.radiusOption;
+    persistSettings();
+    applyBubbleSettings();
+    setActiveToggle('bubbleradius-toggle', 'radiusOption', state.settings.bubbleRadius);
+  });
+  document.getElementById('bubblestyle-toggle').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-bubblestyle-option]');
+    if (!btn) return;
+    state.settings.bubbleStyle = btn.dataset.bubblestyleOption;
+    persistSettings();
+    applyBubbleSettings();
+    setActiveToggle('bubblestyle-toggle', 'bubblestyleOption', state.settings.bubbleStyle);
+  });
   document.getElementById('btn-add-reminder-preset').addEventListener('click', () => {
     const label = document.getElementById('new-reminder-label').value.trim();
     const minutes = parseInt(document.getElementById('new-reminder-minutes').value, 10);
@@ -2146,6 +2195,7 @@ function registerServiceWorker() {
 function init() {
   applyTheme();
   applyAccentColor();
+  applyBubbleSettings();
   seedDemoData();
 
   buildCategoryPicker();
