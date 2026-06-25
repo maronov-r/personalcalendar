@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
   contacts: 'orbit_contacts',
   settings: 'orbit_settings',
   categories: 'orbit_categories',
+  circles: 'orbit_circles',
   sync: 'orbit_sync_meta',
   seeded: 'orbit_seeded',
 };
@@ -28,6 +29,14 @@ const DEFAULT_CATEGORIES = [
   { id: 'health',   label: 'Health / Exercise',  color: '#39ff14', icon: '🏃' },
   { id: 'personal', label: 'Personal / Errands', color: '#f5a623', icon: '🧾' },
   { id: 'meal',     label: 'Meal / Food',        color: '#ff6ec7', icon: '🍽️' },
+];
+
+const DEFAULT_CIRCLES = [
+  { id: 'family',       label: 'Family',          color: '#ff6ec7', icon: '👪' },
+  { id: 'close',        label: 'Close Friends',   color: '#bf5af2', icon: '💜' },
+  { id: 'friends',      label: 'Friends',         color: '#00f5ff', icon: '🎉' },
+  { id: 'work',         label: 'Work',            color: '#f5a623', icon: '💼' },
+  { id: 'acquaintance', label: 'Acquaintances',   color: '#39ff14', icon: '👋' },
 ];
 
 const DEFAULT_REMINDER_PRESETS = [
@@ -84,26 +93,32 @@ const initialSettings = Object.assign({
   dayEndHour: 24,
   reminderPresets: DEFAULT_REMINDER_PRESETS.map(p => Object.assign({}, p)),
   followUpPresets: DEFAULT_FOLLOWUP_PRESETS.map(p => Object.assign({}, p)),
+  peopleView: 'list',
 }, loadJSON(STORAGE_KEYS.settings, {}));
 
 const state = {
   events: loadJSON(STORAGE_KEYS.events, []),
   contacts: loadJSON(STORAGE_KEYS.contacts, []),
   categories: loadJSON(STORAGE_KEYS.categories, null) || DEFAULT_CATEGORIES.map(c => Object.assign({}, c)),
+  circles: loadJSON(STORAGE_KEYS.circles, null) || DEFAULT_CIRCLES.map(c => Object.assign({}, c)),
   settings: initialSettings,
   sync: Object.assign({ connected: false, driveFileId: null, lastSyncedAt: null, lastLocalChangeAt: Date.now() }, loadJSON(STORAGE_KEYS.sync, {})),
   view: initialSettings.defaultView === 'month' ? 'month' : 'week',
+  peopleView: initialSettings.peopleView === 'bubbles' ? 'bubbles' : 'list',
   currentDate: new Date(),
   screen: 'calendar',
   activeContactId: null,
   editingEventId: null,
   editingContactId: null,
   editingCategoryId: null,
+  editingCircleId: null,
   pendingConfirmAction: null,
   selectedEventContactId: null,
   selectedCategory: 'work',
   selectedEmoji: '🙂',
   selectedCategoryIcon: '💼',
+  selectedCircleIcon: '🎉',
+  selectedContactCircleId: null,
   contactTags: [],
 };
 
@@ -111,6 +126,7 @@ function persistEvents() { saveJSON(STORAGE_KEYS.events, state.events); markLoca
 function persistContacts() { saveJSON(STORAGE_KEYS.contacts, state.contacts); markLocalChange(); }
 function persistSettings() { saveJSON(STORAGE_KEYS.settings, state.settings); markLocalChange(); }
 function persistCategories() { saveJSON(STORAGE_KEYS.categories, state.categories); markLocalChange(); }
+function persistCircles() { saveJSON(STORAGE_KEYS.circles, state.circles); markLocalChange(); }
 function persistSync() { saveJSON(STORAGE_KEYS.sync, state.sync); }
 
 function getCategoryMap() {
@@ -120,6 +136,17 @@ function getCategoryMap() {
 }
 function getCategory(id) {
   return getCategoryMap()[id] || state.categories[0];
+}
+function getCircleMap() {
+  const m = {};
+  state.circles.forEach(c => { m[c.id] = c; });
+  return m;
+}
+function getCircle(id) {
+  return getCircleMap()[id] || state.circles[0];
+}
+function defaultCircleId() {
+  return state.circles[0] ? state.circles[0].id : null;
 }
 function getFollowUpPresetMap() {
   const m = {};
@@ -166,6 +193,7 @@ function buildSyncDoc() {
     events: state.events,
     contacts: state.contacts,
     categories: state.categories,
+    circles: state.circles,
     settings: state.settings,
   };
 }
@@ -174,16 +202,19 @@ function applyRemoteDoc(remote) {
   state.events = Array.isArray(remote.events) ? remote.events : [];
   state.contacts = Array.isArray(remote.contacts) ? remote.contacts : [];
   state.categories = Array.isArray(remote.categories) && remote.categories.length ? remote.categories : state.categories;
+  state.circles = Array.isArray(remote.circles) && remote.circles.length ? remote.circles : state.circles;
   state.settings = Object.assign({}, state.settings, remote.settings || {});
   saveJSON(STORAGE_KEYS.events, state.events);
   saveJSON(STORAGE_KEYS.contacts, state.contacts);
   saveJSON(STORAGE_KEYS.categories, state.categories);
+  saveJSON(STORAGE_KEYS.circles, state.circles);
   saveJSON(STORAGE_KEYS.settings, state.settings);
   state.sync.lastLocalChangeAt = remote.updatedAt;
 
   applyTheme();
   applyAccentColor();
   buildCategoryPicker();
+  buildCirclePicker();
   buildReminderOptions();
   buildFollowUpOptions();
   refreshCurrentScreen();
@@ -508,9 +539,9 @@ function seedDemoData() {
   if (localStorage.getItem(STORAGE_KEYS.seeded)) return;
   const now = new Date();
 
-  const sam = makeContact({ name: 'Sam Rivera', emoji: '🧑‍🎤', tags: ['close friend'], lastSeen: dateKey(addDays(now, -10)), followUpFrequency: 'weekly', notes: 'Met at the climbing gym. Always up for tacos.' });
-  const priya = makeContact({ name: 'Priya Desai', emoji: '👩‍👧', tags: ['family'], lastSeen: dateKey(addDays(now, -50)), followUpFrequency: 'monthly', notes: 'Sister — call more often!' });
-  const jess = makeContact({ name: 'Jess Patel', emoji: '🧑‍💻', tags: ['colleague'], lastSeen: dateKey(addDays(now, -5)), followUpFrequency: 'quarterly', notes: 'Work friend from the design team.' });
+  const sam = makeContact({ name: 'Sam Rivera', emoji: '🧑‍🎤', tags: ['close friend'], lastSeen: dateKey(addDays(now, -10)), followUpFrequency: 'weekly', notes: 'Always up for tacos.', circleId: 'close', howMet: 'Climbing gym, 2019', introducedBy: null });
+  const priya = makeContact({ name: 'Priya Desai', emoji: '👩‍👧', tags: ['family'], lastSeen: dateKey(addDays(now, -50)), followUpFrequency: 'monthly', notes: 'Sister — call more often!', circleId: 'family', howMet: 'Sister', introducedBy: null });
+  const jess = makeContact({ name: 'Jess Patel', emoji: '🧑‍💻', tags: ['colleague'], lastSeen: dateKey(addDays(now, -5)), followUpFrequency: 'quarterly', notes: 'Work friend from the design team.', circleId: 'work', howMet: 'Design team at work', introducedBy: sam.id });
 
   const events = [
     makeEvent({ title: 'Q3 planning session', category: 'work', start: setTime(now, 9, 0), end: setTime(now, 10, 30), notes: '', reminderMinutes: 30, contactId: null }),
@@ -636,7 +667,7 @@ function switchScreen(screen) {
   document.getElementById(controlsMap[screen]).classList.remove('hidden');
 
   if (screen === 'calendar') renderCalendar();
-  else if (screen === 'people') renderPeople();
+  else if (screen === 'people') { setActivePeopleViewToggle(state.peopleView); renderPeople(); }
   else if (screen === 'contact-profile') renderContactProfile(state.activeContactId);
   else if (screen === 'settings') renderSettings();
 }
@@ -916,6 +947,41 @@ function updateCategoryPickerUI() {
   });
 }
 
+function buildCirclePicker() {
+  const picker = document.getElementById('circle-picker');
+  if (!picker) return;
+  picker.innerHTML = '';
+  state.circles.forEach(circle => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'circle-pill';
+    btn.dataset.circle = circle.id;
+    btn.style.setProperty('--circle-color', circle.color);
+    btn.style.setProperty('--circle-glow', hexToRgba(circle.color, 0.3));
+    btn.innerHTML = `${circle.icon} ${circle.label}`;
+    btn.addEventListener('click', () => { state.selectedContactCircleId = circle.id; updateCirclePickerUI(); });
+    picker.appendChild(btn);
+  });
+  if (!state.circles.some(c => c.id === state.selectedContactCircleId)) {
+    state.selectedContactCircleId = defaultCircleId();
+  }
+}
+function updateCirclePickerUI() {
+  document.querySelectorAll('.circle-pill').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.circle === state.selectedContactCircleId);
+  });
+}
+
+function buildIntroducedByOptions(excludeId) {
+  const sel = document.getElementById('contact-introduced-by');
+  if (!sel) return;
+  const options = state.contacts
+    .filter(c => c.id !== excludeId)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  sel.innerHTML = '<option value="">No one / not sure</option>' +
+    options.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+}
+
 function setEventContact(contactId) {
   state.selectedEventContactId = contactId || null;
   const chip = document.getElementById('event-contact-chip');
@@ -1060,6 +1126,15 @@ function wireEventForm() {
 /* ===================== CRM — People list ===================== */
 
 function renderPeople() {
+  document.getElementById('people-empty').classList.toggle('hidden', state.contacts.length > 0);
+  document.getElementById('people-list-view').classList.toggle('hidden', state.peopleView === 'bubbles');
+  document.getElementById('people-bubbles-view').classList.toggle('hidden', state.peopleView !== 'bubbles');
+
+  if (state.peopleView === 'bubbles') {
+    renderPeopleBubbles();
+    return;
+  }
+
   const overdue = [], upcoming = [], good = [];
   state.contacts.forEach(c => {
     const status = getContactStatus(c);
@@ -1071,11 +1146,60 @@ function renderPeople() {
   upcoming.sort((a, b) => a.status.nextPlanned - b.status.nextPlanned);
   good.sort((a, b) => (b.status.lastSeen || 0) - (a.status.lastSeen || 0));
 
-  document.getElementById('people-empty').classList.toggle('hidden', state.contacts.length > 0);
-
   renderContactList('list-overdue', overdue, 'overdue');
   renderContactList('list-upcoming', upcoming, 'upcoming');
   renderContactList('list-good', good, 'good');
+}
+
+function renderPeopleBubbles() {
+  const container = document.getElementById('people-bubbles-view');
+  container.innerHTML = '';
+  state.circles.forEach(circle => {
+    const members = state.contacts.filter(c => (c.circleId || defaultCircleId()) === circle.id);
+    if (!members.length) return;
+
+    const cluster = document.createElement('div');
+    cluster.className = 'bubble-cluster';
+    cluster.style.setProperty('--circle-color', circle.color);
+    cluster.innerHTML = `
+      <div class="bubble-cluster-header">
+        <span class="bubble-cluster-icon">${circle.icon}</span>
+        <span class="bubble-cluster-label">${escapeHtml(circle.label)}</span>
+        <span class="bubble-cluster-count">${members.length}</span>
+      </div>
+      <div class="bubble-cluster-bubbles"></div>
+    `;
+    const bubbles = cluster.querySelector('.bubble-cluster-bubbles');
+    members.forEach(c => {
+      const status = getContactStatus(c);
+      const bubble = document.createElement('div');
+      bubble.className = 'contact-bubble';
+      bubble.innerHTML = `
+        <div class="contact-bubble-avatar">${c.emoji}<span class="contact-bubble-dot status-dot-${status.bucket}"></span></div>
+        <div class="contact-bubble-name">${escapeHtml(c.name)}</div>
+      `;
+      bubble.addEventListener('click', () => openContactProfile(c.id));
+      bubbles.appendChild(bubble);
+    });
+    container.appendChild(cluster);
+  });
+}
+
+function setActivePeopleViewToggle(view) {
+  document.getElementById('btn-peopleview-list').classList.toggle('active', view !== 'bubbles');
+  document.getElementById('btn-peopleview-bubbles').classList.toggle('active', view === 'bubbles');
+}
+
+function wirePeopleViewToggle() {
+  document.getElementById('people-view-toggle').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-peopleview]');
+    if (!btn) return;
+    state.peopleView = btn.dataset.peopleview;
+    state.settings.peopleView = state.peopleView;
+    persistSettings();
+    setActivePeopleViewToggle(state.peopleView);
+    renderPeople();
+  });
 }
 
 function renderContactList(containerId, items, bucket) {
@@ -1142,12 +1266,19 @@ function renderContactProfile(contactId) {
   const pastHtml = past.length ? past.map(eventRowHtml).join('') : '<p class="profile-notes profile-notes-empty">No past events linked yet.</p>';
   const futureHtml = future.length ? future.map(eventRowHtml).join('') : '<p class="profile-notes profile-notes-empty">Nothing planned yet.</p>';
   const statusLabel = status.bucket === 'overdue' ? 'Reach out' : status.bucket === 'upcoming' ? 'Upcoming' : 'All good';
+  const circle = getCircle(c.circleId);
+  const introducedByContact = c.introducedBy ? state.contacts.find(x => x.id === c.introducedBy) : null;
+  const connectionParts = [];
+  if (c.howMet) connectionParts.push(escapeHtml(c.howMet));
+  if (introducedByContact) connectionParts.push(`Introduced by <a href="#" class="profile-link" data-introduced-by="${introducedByContact.id}">${escapeHtml(introducedByContact.name)}</a>`);
+  const connectionHtml = connectionParts.length ? connectionParts.join('<br>') : 'No connection info yet.';
 
   content.innerHTML = `
     <div class="profile-header">
       <div class="profile-avatar">${c.emoji}</div>
       <div class="profile-name">${escapeHtml(c.name)}</div>
       <div class="profile-tags">${tagsHtml}</div>
+      <div class="profile-circle-badge" style="--circle-color:${circle.color}">${circle.icon} ${escapeHtml(circle.label)}</div>
     </div>
     <div class="profile-stats">
       <div class="profile-stat"><div class="profile-stat-label">Last seen</div><div class="profile-stat-value">${lastSeenText}</div></div>
@@ -1159,6 +1290,8 @@ function renderContactProfile(contactId) {
       <button type="button" class="pill-btn pill-btn-primary" id="btn-plan-something">Plan something</button>
       <button type="button" class="pill-btn" id="btn-edit-contact">Edit</button>
     </div>
+    <div class="profile-section-title">Connection</div>
+    <div class="profile-notes${connectionParts.length ? '' : ' profile-notes-empty'}">${connectionHtml}</div>
     <div class="profile-section-title">Notes</div>
     <div class="profile-notes${c.notes ? '' : ' profile-notes-empty'}">${c.notes ? escapeHtml(c.notes) : 'No notes yet.'}</div>
     <div class="profile-section-title">Upcoming</div>
@@ -1172,6 +1305,8 @@ function renderContactProfile(contactId) {
   content.querySelectorAll('.event-row').forEach(row => {
     row.addEventListener('click', () => openEventModal(row.dataset.eventId));
   });
+  const introLink = content.querySelector('.profile-link[data-introduced-by]');
+  if (introLink) introLink.addEventListener('click', (e) => { e.preventDefault(); openContactProfile(introLink.dataset.introducedBy); });
 }
 
 /* ===================== CRM — Contact modal ===================== */
@@ -1272,6 +1407,8 @@ function openContactModal(contactId) {
   document.getElementById('emoji-grid').classList.add('hidden');
   document.getElementById('contact-delete').classList.toggle('hidden', !contactId);
 
+  buildIntroducedByOptions(contactId);
+
   if (contactId) {
     const c = state.contacts.find(x => x.id === contactId);
     document.getElementById('contact-modal-title').textContent = 'Edit person';
@@ -1279,6 +1416,9 @@ function openContactModal(contactId) {
     state.selectedEmoji = c.emoji;
     document.getElementById('contact-emoji-btn').textContent = c.emoji;
     state.contactTags = (c.tags || []).slice();
+    state.selectedContactCircleId = c.circleId || defaultCircleId();
+    document.getElementById('contact-howmet').value = c.howMet || '';
+    document.getElementById('contact-introduced-by').value = c.introducedBy || '';
     document.getElementById('contact-lastseen').value = c.lastSeen || '';
     document.getElementById('contact-frequency').value = c.followUpFrequency;
     document.getElementById('contact-notes').value = c.notes || '';
@@ -1287,11 +1427,15 @@ function openContactModal(contactId) {
     state.selectedEmoji = '🙂';
     document.getElementById('contact-emoji-btn').textContent = '🙂';
     state.contactTags = [];
+    state.selectedContactCircleId = defaultCircleId();
+    document.getElementById('contact-howmet').value = '';
+    document.getElementById('contact-introduced-by').value = '';
     document.getElementById('contact-lastseen').value = '';
     document.getElementById('contact-frequency').value = defaultFollowUpPresetId();
     document.getElementById('contact-notes').value = '';
   }
   renderTagChips();
+  updateCirclePickerUI();
   openModal('modal-contact');
 }
 
@@ -1305,13 +1449,17 @@ function wireContactForm() {
     const lastSeen = document.getElementById('contact-lastseen').value || null;
     const followUpFrequency = document.getElementById('contact-frequency').value;
     const notes = document.getElementById('contact-notes').value.trim();
+    const circleId = state.selectedContactCircleId || defaultCircleId();
+    const howMet = document.getElementById('contact-howmet').value.trim();
+    const introducedBy = document.getElementById('contact-introduced-by').value || null;
 
     if (state.editingContactId) {
       const c = state.contacts.find(x => x.id === state.editingContactId);
       c.name = name; c.emoji = state.selectedEmoji; c.tags = state.contactTags.slice();
       c.lastSeen = lastSeen; c.followUpFrequency = followUpFrequency; c.notes = notes;
+      c.circleId = circleId; c.howMet = howMet; c.introducedBy = introducedBy;
     } else {
-      state.contacts.push({ id: uid(), name, emoji: state.selectedEmoji, tags: state.contactTags.slice(), lastSeen, followUpFrequency, notes, createdAt: new Date().toISOString() });
+      state.contacts.push({ id: uid(), name, emoji: state.selectedEmoji, tags: state.contactTags.slice(), lastSeen, followUpFrequency, notes, circleId, howMet, introducedBy, createdAt: new Date().toISOString() });
     }
     persistContacts();
     closeModal('modal-contact');
@@ -1324,6 +1472,7 @@ function wireContactForm() {
     confirmDialog('Delete this person? Linked events will be kept but unlinked.', () => {
       state.contacts = state.contacts.filter(c => c.id !== id);
       state.events.forEach(ev => { if (ev.contactId === id) ev.contactId = null; });
+      state.contacts.forEach(c => { if (c.introducedBy === id) c.introducedBy = null; });
       persistContacts();
       persistEvents();
       closeModal('modal-contact');
@@ -1427,6 +1576,99 @@ function wireCategoryForm() {
   });
 }
 
+/* ===================== Circle manager ===================== */
+
+function renderCircleManager() {
+  const list = document.getElementById('circle-manager-list');
+  list.innerHTML = '';
+  state.circles.forEach(circle => {
+    const row = document.createElement('div');
+    row.className = 'category-manager-row';
+    row.innerHTML = `
+      <span class="category-manager-swatch" style="--cat-color:${circle.color}"></span>
+      <span class="category-manager-icon">${circle.icon}</span>
+      <span class="category-manager-label">${escapeHtml(circle.label)}</span>
+    `;
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'text-btn';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => openCircleModal(circle.id));
+    row.appendChild(editBtn);
+    list.appendChild(row);
+  });
+}
+
+function openCircleModal(circleId) {
+  state.editingCircleId = circleId || null;
+  document.getElementById('circle-form').reset();
+  document.getElementById('circle-icon-grid').classList.add('hidden');
+  document.getElementById('circle-delete').classList.toggle('hidden', !circleId);
+
+  if (circleId) {
+    const circle = getCircleMap()[circleId];
+    document.getElementById('circle-modal-title').textContent = 'Edit circle';
+    document.getElementById('circle-label').value = circle.label;
+    document.getElementById('circle-color').value = circle.color;
+    state.selectedCircleIcon = circle.icon;
+    document.getElementById('circle-icon-btn').textContent = circle.icon;
+  } else {
+    document.getElementById('circle-modal-title').textContent = 'New circle';
+    document.getElementById('circle-color').value = DEFAULT_ACCENT;
+    state.selectedCircleIcon = '🎉';
+    document.getElementById('circle-icon-btn').textContent = '🎉';
+  }
+  openModal('modal-circle');
+}
+
+function wireCircleModalWidgets() {
+  document.getElementById('circle-icon-btn').addEventListener('click', () => {
+    document.getElementById('circle-icon-grid').classList.toggle('hidden');
+  });
+}
+
+function wireCircleForm() {
+  document.getElementById('btn-add-circle').addEventListener('click', () => openCircleModal(null));
+
+  document.getElementById('circle-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const label = document.getElementById('circle-label').value.trim();
+    if (!label) return;
+    const color = document.getElementById('circle-color').value;
+    const icon = state.selectedCircleIcon;
+
+    if (state.editingCircleId) {
+      const circle = state.circles.find(c => c.id === state.editingCircleId);
+      circle.label = label; circle.color = color; circle.icon = icon;
+    } else {
+      state.circles.push({ id: uid(), label, color, icon });
+    }
+    persistCircles();
+    closeModal('modal-circle');
+    renderCircleManager();
+    buildCirclePicker();
+    refreshCurrentScreen();
+    showToast('Circle saved');
+  });
+
+  document.getElementById('circle-delete').addEventListener('click', () => {
+    const id = state.editingCircleId;
+    if (state.circles.length <= 1) { showToast("Can't delete the last circle"); return; }
+    if (state.contacts.some(c => c.circleId === id)) {
+      showToast('This circle has people in it — move them to another circle first');
+      return;
+    }
+    confirmDialog('Delete this circle?', () => {
+      state.circles = state.circles.filter(c => c.id !== id);
+      persistCircles();
+      closeModal('modal-circle');
+      renderCircleManager();
+      buildCirclePicker();
+      showToast('Circle deleted');
+    }, { title: 'Delete circle', okLabel: 'Delete' });
+  });
+}
+
 /* ===================== Settings ===================== */
 
 let deferredInstallPrompt = null;
@@ -1473,6 +1715,7 @@ function renderSettings() {
   setActiveThemeToggle(state.settings.theme);
   document.getElementById('accent-color-input').value = state.settings.accentColor;
   renderCategoryManager();
+  renderCircleManager();
   setActiveWeekStartToggle(state.settings.weekStartsOn);
   setActiveDefaultViewToggle(state.settings.defaultView);
   document.getElementById('select-day-start-hour').value = String(state.settings.dayStartHour);
@@ -1668,6 +1911,7 @@ function wireSettings() {
       localStorage.removeItem(STORAGE_KEYS.contacts);
       localStorage.removeItem(STORAGE_KEYS.settings);
       localStorage.removeItem(STORAGE_KEYS.categories);
+      localStorage.removeItem(STORAGE_KEYS.circles);
       localStorage.removeItem(STORAGE_KEYS.seeded);
       localStorage.removeItem(STORAGE_KEYS.sync);
       location.reload();
@@ -1765,6 +2009,7 @@ function init() {
   seedDemoData();
 
   buildCategoryPicker();
+  buildCirclePicker();
   buildEmojiGrid('emoji-grid', EMOJI_CHOICES, (em) => {
     state.selectedEmoji = em;
     document.getElementById('contact-emoji-btn').textContent = em;
@@ -1772,6 +2017,10 @@ function init() {
   buildEmojiGrid('category-icon-grid', CATEGORY_ICON_CHOICES, (em) => {
     state.selectedCategoryIcon = em;
     document.getElementById('category-icon-btn').textContent = em;
+  });
+  buildEmojiGrid('circle-icon-grid', CATEGORY_ICON_CHOICES, (em) => {
+    state.selectedCircleIcon = em;
+    document.getElementById('circle-icon-btn').textContent = em;
   });
   buildTagSuggestions();
   buildReminderOptions();
@@ -1787,6 +2036,9 @@ function init() {
   wireContactForm();
   wireCategoryModalWidgets();
   wireCategoryForm();
+  wireCircleModalWidgets();
+  wireCircleForm();
+  wirePeopleViewToggle();
   wireSettings();
   wireSyncSettings();
   wireSyncLifecycleEvents();

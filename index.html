@@ -54,6 +54,10 @@
     </div>
 
     <div class="topbar-controls hidden" id="people-controls">
+      <div class="view-toggle" id="people-view-toggle">
+        <button class="view-toggle-btn" id="btn-peopleview-list" data-peopleview="list">List</button>
+        <button class="view-toggle-btn" id="btn-peopleview-bubbles" data-peopleview="bubbles">Bubbles</button>
+      </div>
       <button class="pill-btn pill-btn-accent" id="btn-add-contact">+ Add person</button>
     </div>
 
@@ -96,18 +100,22 @@
         <p class="empty-sub">Add the people you care about and never lose touch.</p>
       </div>
 
-      <div class="crm-section" id="section-overdue">
-        <h2 class="crm-heading crm-heading-overdue">Overdue — reach out</h2>
-        <div class="contact-list" id="list-overdue"></div>
+      <div id="people-list-view">
+        <div class="crm-section" id="section-overdue">
+          <h2 class="crm-heading crm-heading-overdue">Overdue — reach out</h2>
+          <div class="contact-list" id="list-overdue"></div>
+        </div>
+        <div class="crm-section" id="section-upcoming">
+          <h2 class="crm-heading crm-heading-upcoming">Coming up</h2>
+          <div class="contact-list" id="list-upcoming"></div>
+        </div>
+        <div class="crm-section" id="section-good">
+          <h2 class="crm-heading crm-heading-good">All good</h2>
+          <div class="contact-list" id="list-good"></div>
+        </div>
       </div>
-      <div class="crm-section" id="section-upcoming">
-        <h2 class="crm-heading crm-heading-upcoming">Coming up</h2>
-        <div class="contact-list" id="list-upcoming"></div>
-      </div>
-      <div class="crm-section" id="section-good">
-        <h2 class="crm-heading crm-heading-good">All good</h2>
-        <div class="contact-list" id="list-good"></div>
-      </div>
+
+      <div class="bubble-view hidden" id="people-bubbles-view"></div>
     </section>
 
     <section class="screen hidden" id="screen-contact-profile">
@@ -144,6 +152,13 @@
         <h2 class="settings-heading">Categories</h2>
         <div class="category-manager-list" id="category-manager-list"></div>
         <button type="button" class="pill-btn pill-btn-accent" id="btn-add-category">+ Add category</button>
+      </div>
+
+      <div class="settings-group">
+        <h2 class="settings-heading">Circles</h2>
+        <p class="settings-note">Group people into circles — family, close friends, work, and so on. Circles power the Bubbles view on the People screen.</p>
+        <div class="category-manager-list" id="circle-manager-list"></div>
+        <button type="button" class="pill-btn pill-btn-accent" id="btn-add-circle">+ Add circle</button>
       </div>
 
       <div class="settings-group">
@@ -356,6 +371,9 @@
           </div>
           <div class="emoji-grid hidden" id="emoji-grid"></div>
 
+          <label class="field-label">Circle</label>
+          <div class="circle-picker" id="circle-picker"></div>
+
           <label class="field-label">Tags</label>
           <div class="tag-input-wrap">
             <div class="tag-chips" id="contact-tag-chips"></div>
@@ -371,6 +389,17 @@
             <div class="field-col">
               <label class="field-label" for="contact-frequency">Follow-up</label>
               <select class="field-input" id="contact-frequency"></select>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-col">
+              <label class="field-label" for="contact-howmet">How you met</label>
+              <input class="field-input" id="contact-howmet" type="text" placeholder="e.g. College roommate">
+            </div>
+            <div class="field-col">
+              <label class="field-label" for="contact-introduced-by">Introduced by</label>
+              <select class="field-input" id="contact-introduced-by"></select>
             </div>
           </div>
 
@@ -412,6 +441,37 @@
           <button type="button" class="text-btn text-btn-danger hidden" id="category-delete">Delete</button>
           <div class="modal-footer-spacer"></div>
           <button type="button" class="text-btn" data-close-modal="modal-category">Cancel</button>
+          <button type="submit" class="pill-btn pill-btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Circle modal -->
+  <div class="modal-overlay hidden" id="modal-circle">
+    <div class="modal-sheet">
+      <form id="circle-form">
+        <div class="modal-header">
+          <h2 class="modal-title" id="circle-modal-title">New circle</h2>
+          <button type="button" class="icon-btn" data-close-modal="modal-circle">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="emoji-picker-row">
+            <button type="button" class="emoji-trigger" id="circle-icon-btn">🎉</button>
+            <div class="field-col">
+              <label class="field-label" for="circle-label">Name</label>
+              <input class="field-input" id="circle-label" type="text" placeholder="Circle name" required>
+            </div>
+          </div>
+          <div class="emoji-grid hidden" id="circle-icon-grid"></div>
+
+          <label class="field-label" for="circle-color">Color</label>
+          <input class="color-input" id="circle-color" type="color" value="#00f5ff">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="text-btn text-btn-danger hidden" id="circle-delete">Delete</button>
+          <div class="modal-footer-spacer"></div>
+          <button type="button" class="text-btn" data-close-modal="modal-circle">Cancel</button>
           <button type="submit" class="pill-btn pill-btn-primary">Save</button>
         </div>
       </form>

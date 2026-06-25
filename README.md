@@ -5,11 +5,11 @@ A personal calendar with a lightweight CRM, built as a installable Progressive W
 ## Features
 
 - **Calendar** — week and month views, color-coded categories (Work, Social, Health, Personal, Meal), tap-to-create events, swipe-free navigation via Prev/Next/Today.
-- **People (CRM)** — track who you've seen and when. Contacts are sorted into *Overdue — reach out*, *Coming up*, and *All good* based on a per-person follow-up frequency (weekly / monthly / quarterly / none).
+- **People (CRM)** — track who you've seen and when. Contacts are sorted into *Overdue — reach out*, *Coming up*, and *All good* based on a per-person follow-up frequency (weekly / monthly / quarterly / none). Switch to the **Bubbles** view to see your people grouped into relationship circles (Family, Close Friends, Friends, Work, Acquaintances, or your own custom circles) as a cluster of avatar bubbles. Each contact can also record *how you met* and *who introduced you* — shown on their profile as a clickable link to the connecting person.
 - **Reminders** — set a reminder (10 min / 30 min / 1 hr / 1 day before) on any event and get a browser notification while Orbit is open or backgrounded. An optional daily 8am digest summarizes the day's events.
 - **Installable PWA** — add Orbit to your iPhone or Android home screen for a full-screen, app-like experience with offline support.
-- **Cross-device sync (optional)** — connect your own Google Drive to sync events, contacts, categories, and settings across devices. See [Cross-device sync](#cross-device-sync-optional) below.
-- **Customizable** — light/dark/auto theme, your own accent color, editable event categories, configurable week-start/default view/day hours, and editable reminder & follow-up presets.
+- **Cross-device sync (optional)** — connect your own Google Drive to sync events, contacts, categories, circles, and settings across devices. See [Cross-device sync](#cross-device-sync-optional) below.
+- **Customizable** — light/dark/auto theme, your own accent color, editable event categories, editable relationship circles, configurable week-start/default view/day hours, and editable reminder & follow-up presets.
 
 ## Tech
 

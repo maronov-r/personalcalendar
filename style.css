@@ -658,6 +658,90 @@ a { color: var(--cyan); }
   max-width: 260px;
 }
 
+/* ----- People bubble view ----- */
+
+.bubble-view.hidden { display: none; }
+
+.bubble-cluster {
+  margin-bottom: 20px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--circle-color) 6%, var(--surface));
+}
+.bubble-cluster-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.bubble-cluster-icon { font-size: 17px; }
+.bubble-cluster-label {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--circle-color);
+  flex: 1;
+  min-width: 0;
+}
+.bubble-cluster-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface-raised);
+  border-radius: 999px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+.bubble-cluster-bubbles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.contact-bubble {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 68px;
+  cursor: pointer;
+  transition: transform var(--ease);
+}
+.contact-bubble:active { transform: scale(0.94); }
+.contact-bubble-avatar {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--surface-raised);
+  border: 2px solid var(--circle-color);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--circle-color) 35%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+.contact-bubble-dot {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+}
+.status-dot-overdue { background: var(--amber); box-shadow: 0 0 6px rgba(245, 166, 35, 0.7); }
+.status-dot-upcoming { background: var(--cyan); box-shadow: 0 0 6px rgba(var(--cyan-rgb), 0.7); }
+.status-dot-good { background: var(--text-muted); }
+.contact-bubble-name {
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ----- Contact profile ----- */
 
 .profile-header {
@@ -692,6 +776,22 @@ a { color: var(--cyan); }
   flex-wrap: wrap;
   justify-content: center;
 }
+
+.profile-circle-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border: 1px solid var(--circle-color);
+  color: var(--circle-color);
+  background: color-mix(in srgb, var(--circle-color) 14%, transparent);
+}
+
+.profile-link { color: var(--cyan); text-decoration: underline; cursor: pointer; }
 
 .profile-stats {
   display: grid;
@@ -1120,6 +1220,31 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   color: var(--text);
   background: color-mix(in srgb, var(--cat-color) 14%, var(--surface-raised));
   box-shadow: 0 0 12px var(--cat-glow);
+}
+
+.circle-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.circle-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 13px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: var(--surface-raised);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: all var(--ease);
+}
+.circle-pill.selected {
+  border-color: var(--circle-color);
+  color: var(--text);
+  background: color-mix(in srgb, var(--circle-color) 14%, var(--surface-raised));
+  box-shadow: 0 0 12px var(--circle-glow);
 }
 
 .contact-combobox { position: relative; }
