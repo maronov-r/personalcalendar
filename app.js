@@ -7,11 +7,20 @@ const STORAGE_KEYS = {
   contacts: 'orbit_contacts',
   settings: 'orbit_settings',
   categories: 'orbit_categories',
+  sync: 'orbit_sync_meta',
   seeded: 'orbit_seeded',
 };
 
 const THEME_COLORS = { dark: '#0a0a0f', light: '#eef0f6' };
 const DEFAULT_ACCENT = '#00f5ff';
+
+const DRIVE_CONFIG = {
+  clientId: '34287822417-m8v2kvrrmigra9e0c1o0mph63sggnsf5.apps.googleusercontent.com',
+  scope: 'https://www.googleapis.com/auth/drive.file',
+  fileName: 'orbit-data.json',
+};
+const DRIVE_FILES_API = 'https://www.googleapis.com/drive/v3/files';
+const DRIVE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files';
 
 const DEFAULT_CATEGORIES = [
   { id: 'work',     label: 'Work / Focus',       color: '#00f5ff', icon: '💼' },
@@ -82,6 +91,7 @@ const state = {
   contacts: loadJSON(STORAGE_KEYS.contacts, []),
   categories: loadJSON(STORAGE_KEYS.categories, null) || DEFAULT_CATEGORIES.map(c => Object.assign({}, c)),
   settings: initialSettings,
+  sync: Object.assign({ connected: false, driveFileId: null, lastSyncedAt: null, lastLocalChangeAt: Date.now() }, loadJSON(STORAGE_KEYS.sync, {})),
   view: initialSettings.defaultView === 'month' ? 'month' : 'week',
   currentDate: new Date(),
   screen: 'calendar',
@@ -97,10 +107,11 @@ const state = {
   contactTags: [],
 };
 
-function persistEvents() { saveJSON(STORAGE_KEYS.events, state.events); }
-function persistContacts() { saveJSON(STORAGE_KEYS.contacts, state.contacts); }
-function persistSettings() { saveJSON(STORAGE_KEYS.settings, state.settings); }
-function persistCategories() { saveJSON(STORAGE_KEYS.categories, state.categories); }
+function persistEvents() { saveJSON(STORAGE_KEYS.events, state.events); markLocalChange(); }
+function persistContacts() { saveJSON(STORAGE_KEYS.contacts, state.contacts); markLocalChange(); }
+function persistSettings() { saveJSON(STORAGE_KEYS.settings, state.settings); markLocalChange(); }
+function persistCategories() { saveJSON(STORAGE_KEYS.categories, state.categories); markLocalChange(); }
+function persistSync() { saveJSON(STORAGE_KEYS.sync, state.sync); }
 
 function getCategoryMap() {
   const m = {};
@@ -125,6 +136,284 @@ function getFollowUpLabel(id) {
 }
 function getDayStartHour() { return state.settings.dayStartHour; }
 function getDayEndHour() { return state.settings.dayEndHour; }
+
+/* ===================== Drive sync ===================== */
+
+const driveSession = { status: 'signed-out', tokenClient: null, accessToken: null, tokenExpiresAt: 0, busy: false, queuedRetry: false };
+let syncDebounceTimer = null;
+let tokenResolve = null;
+let tokenReject = null;
+
+function isGisLoaded() {
+  return !!(window.google && window.google.accounts && window.google.accounts.oauth2);
+}
+
+function markLocalChange() {
+  state.sync.lastLocalChangeAt = Date.now();
+  persistSync();
+  scheduleSync('local-change');
+}
+
+function scheduleSync(reason) {
+  if (!state.sync.connected) return;
+  if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+  syncDebounceTimer = setTimeout(() => { syncDebounceTimer = null; triggerSync(reason || 'debounced'); }, 2500);
+}
+
+function buildSyncDoc() {
+  return {
+    updatedAt: state.sync.lastLocalChangeAt,
+    events: state.events,
+    contacts: state.contacts,
+    categories: state.categories,
+    settings: state.settings,
+  };
+}
+
+function applyRemoteDoc(remote) {
+  state.events = Array.isArray(remote.events) ? remote.events : [];
+  state.contacts = Array.isArray(remote.contacts) ? remote.contacts : [];
+  state.categories = Array.isArray(remote.categories) && remote.categories.length ? remote.categories : state.categories;
+  state.settings = Object.assign({}, state.settings, remote.settings || {});
+  saveJSON(STORAGE_KEYS.events, state.events);
+  saveJSON(STORAGE_KEYS.contacts, state.contacts);
+  saveJSON(STORAGE_KEYS.categories, state.categories);
+  saveJSON(STORAGE_KEYS.settings, state.settings);
+  state.sync.lastLocalChangeAt = remote.updatedAt;
+
+  applyTheme();
+  applyAccentColor();
+  buildCategoryPicker();
+  buildReminderOptions();
+  buildFollowUpOptions();
+  refreshCurrentScreen();
+  if (state.screen === 'settings') renderSettings();
+}
+
+async function driveFetch(token, url, options) {
+  const res = await fetch(url, Object.assign({}, options, {
+    headers: Object.assign({ Authorization: `Bearer ${token}` }, (options && options.headers) || {}),
+  }));
+  if (!res.ok) {
+    const err = new Error('Drive request failed: ' + res.status);
+    err.status = res.status;
+    err.authError = res.status === 401 || res.status === 403;
+    throw err;
+  }
+  return res;
+}
+
+async function findOrCreateDriveFile(token) {
+  const q = encodeURIComponent(`name='${DRIVE_CONFIG.fileName}' and trashed=false`);
+  const listRes = await driveFetch(token, `${DRIVE_FILES_API}?q=${q}&spaces=drive&fields=files(id)`);
+  const listData = await listRes.json();
+  if (listData.files && listData.files.length) return listData.files[0].id;
+  const createRes = await driveFetch(token, DRIVE_FILES_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: DRIVE_CONFIG.fileName }),
+  });
+  const created = await createRes.json();
+  return created.id;
+}
+
+async function pullFromDrive(token, fileId) {
+  const res = await driveFetch(token, `${DRIVE_FILES_API}/${fileId}?alt=media`);
+  const text = await res.text();
+  if (!text) return null;
+  try { return JSON.parse(text); } catch (e) { return null; }
+}
+
+async function pushToDrive(token, fileId, doc) {
+  await driveFetch(token, `${DRIVE_UPLOAD_API}/${fileId}?uploadType=media`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(doc),
+  });
+}
+
+function getTokenClient() {
+  if (!driveSession.tokenClient) {
+    driveSession.tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: DRIVE_CONFIG.clientId,
+      scope: DRIVE_CONFIG.scope,
+      callback: (resp) => {
+        const resolve = tokenResolve, reject = tokenReject;
+        tokenResolve = null; tokenReject = null;
+        if (resp && resp.access_token) {
+          driveSession.accessToken = resp.access_token;
+          driveSession.tokenExpiresAt = Date.now() + Number(resp.expires_in || 3600) * 1000;
+          if (resolve) resolve(resp.access_token);
+        } else if (reject) {
+          reject(new Error('No access token in response'));
+        }
+      },
+      error_callback: (err) => {
+        const reject = tokenReject;
+        tokenResolve = null; tokenReject = null;
+        if (reject) reject(err || new Error('Token request failed'));
+      },
+    });
+  }
+  return driveSession.tokenClient;
+}
+
+function requestAccessToken(promptMode) {
+  return new Promise((resolve, reject) => {
+    tokenResolve = resolve;
+    tokenReject = reject;
+    getTokenClient().requestAccessToken(promptMode === undefined ? {} : { prompt: promptMode });
+  });
+}
+
+async function ensureAccessToken() {
+  if (driveSession.accessToken && Date.now() < driveSession.tokenExpiresAt - 60000) return driveSession.accessToken;
+  if (!isGisLoaded()) return null;
+  try { return await requestAccessToken(''); } catch (e) { return null; }
+}
+
+async function connectDrive() {
+  if (!isGisLoaded()) { showToast('Google sign-in is still loading — try again in a moment'); return; }
+  driveSession.status = 'connecting';
+  updateSyncUI();
+  try {
+    const token = await requestAccessToken();
+    if (!token) throw new Error('no token');
+    state.sync.connected = true;
+    persistSync();
+    driveSession.status = 'idle';
+    updateSyncUI();
+    showToast('Connected to Google Drive');
+    triggerSync('connect');
+  } catch (e) {
+    driveSession.status = state.sync.connected ? 'needs-reauth' : 'signed-out';
+    updateSyncUI();
+    showToast('Could not connect to Google Drive');
+  }
+}
+
+function disconnectDrive() {
+  state.sync.connected = false;
+  persistSync();
+  driveSession.status = 'signed-out';
+  driveSession.accessToken = null;
+  driveSession.tokenExpiresAt = 0;
+  if (syncDebounceTimer) { clearTimeout(syncDebounceTimer); syncDebounceTimer = null; }
+  updateSyncUI();
+  showToast('Disconnected from Google Drive');
+}
+
+async function triggerSync(reason) {
+  if (!state.sync.connected) return;
+  if (driveSession.busy) { driveSession.queuedRetry = true; return; }
+  driveSession.busy = true;
+  driveSession.status = 'syncing';
+  updateSyncUI();
+  try {
+    const token = await ensureAccessToken();
+    if (!token) { driveSession.status = 'needs-reauth'; return; }
+    if (!state.sync.driveFileId) {
+      state.sync.driveFileId = await findOrCreateDriveFile(token);
+      persistSync();
+    }
+    const remote = await pullFromDrive(token, state.sync.driveFileId);
+    if (remote && typeof remote.updatedAt === 'number' && remote.updatedAt > state.sync.lastLocalChangeAt) {
+      applyRemoteDoc(remote);
+    } else {
+      await pushToDrive(token, state.sync.driveFileId, buildSyncDoc());
+    }
+    state.sync.lastSyncedAt = Date.now();
+    persistSync();
+    driveSession.status = 'idle';
+  } catch (e) {
+    driveSession.status = e && e.authError ? 'needs-reauth' : 'offline';
+  } finally {
+    driveSession.busy = false;
+    updateSyncUI();
+    if (driveSession.queuedRetry) { driveSession.queuedRetry = false; scheduleSync('retry'); }
+  }
+}
+
+function formatRelativeTime(ts) {
+  const diff = Date.now() - ts;
+  if (diff < 30000) return 'just now';
+  if (diff < 3600000) return Math.round(diff / 60000) + 'm ago';
+  if (diff < 86400000) return Math.round(diff / 3600000) + 'h ago';
+  return Math.round(diff / 86400000) + 'd ago';
+}
+
+function updateSyncUI() {
+  const accountStatusEl = document.getElementById('sync-account-status');
+  if (!accountStatusEl) return;
+  const connectBtn = document.getElementById('btn-sync-connect');
+  const statusRow = document.getElementById('row-sync-status');
+  const statusText = document.getElementById('sync-status-text');
+  const disconnectRow = document.getElementById('row-sync-disconnect');
+  const syncNowBtn = document.getElementById('btn-sync-now');
+
+  const connected = driveSession.status !== 'signed-out';
+  connectBtn.classList.toggle('hidden', connected);
+  statusRow.classList.toggle('hidden', !connected);
+  disconnectRow.classList.toggle('hidden', !connected);
+  accountStatusEl.textContent = connected ? 'Connected' : 'Not connected';
+
+  switch (driveSession.status) {
+    case 'connecting': statusText.textContent = 'Connecting…'; break;
+    case 'syncing': statusText.textContent = 'Syncing…'; break;
+    case 'offline': statusText.textContent = 'Offline — will sync when back online'; break;
+    case 'needs-reauth': statusText.textContent = 'Sign-in expired — tap Sync now to reconnect'; break;
+    default: statusText.textContent = state.sync.lastSyncedAt ? `Synced ${formatRelativeTime(state.sync.lastSyncedAt)}` : 'Connected — syncing soon';
+  }
+  connectBtn.disabled = driveSession.status === 'connecting';
+  syncNowBtn.disabled = driveSession.status === 'connecting' || driveSession.status === 'syncing';
+}
+
+function waitForGis(attempt) {
+  if (isGisLoaded()) { silentReconnect(); return; }
+  if (attempt >= 15) { driveSession.status = 'needs-reauth'; updateSyncUI(); return; }
+  setTimeout(() => waitForGis(attempt + 1), 300);
+}
+
+async function silentReconnect() {
+  const token = await ensureAccessToken();
+  if (token) {
+    driveSession.status = 'idle';
+    updateSyncUI();
+    triggerSync('startup');
+  } else {
+    driveSession.status = 'needs-reauth';
+    updateSyncUI();
+  }
+}
+
+function initDriveSync() {
+  if (!state.sync.connected) { driveSession.status = 'signed-out'; updateSyncUI(); return; }
+  if (!navigator.onLine) { driveSession.status = 'offline'; updateSyncUI(); return; }
+  driveSession.status = 'connecting';
+  updateSyncUI();
+  waitForGis(0);
+}
+
+function wireSyncLifecycleEvents() {
+  window.addEventListener('online', () => { if (state.sync.connected) triggerSync('online'); });
+  window.addEventListener('focus', () => { if (state.sync.connected) triggerSync('focus'); });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && state.sync.connected) triggerSync('visible');
+  });
+}
+
+function wireSyncSettings() {
+  document.getElementById('btn-sync-connect').addEventListener('click', connectDrive);
+  document.getElementById('btn-sync-now').addEventListener('click', () => {
+    if (driveSession.status === 'needs-reauth') connectDrive();
+    else triggerSync('manual');
+  });
+  document.getElementById('btn-sync-disconnect').addEventListener('click', () => {
+    confirmDialog('Stop syncing this device with Google Drive? Your data stays on this device and in Drive.', () => {
+      disconnectDrive();
+    }, { title: 'Disconnect Google Drive', okLabel: 'Disconnect' });
+  });
+}
 
 /* ===================== Theme ===================== */
 
@@ -1192,6 +1481,7 @@ function renderSettings() {
   renderFollowUpPresetsEditor();
   updateNotifPermissionUI();
   updateInstallUI();
+  updateSyncUI();
 }
 
 function setActiveThemeToggle(theme) {
@@ -1379,6 +1669,7 @@ function wireSettings() {
       localStorage.removeItem(STORAGE_KEYS.settings);
       localStorage.removeItem(STORAGE_KEYS.categories);
       localStorage.removeItem(STORAGE_KEYS.seeded);
+      localStorage.removeItem(STORAGE_KEYS.sync);
       location.reload();
     }, { title: 'Clear all data', okLabel: 'Clear data' });
   });
@@ -1497,12 +1788,15 @@ function init() {
   wireCategoryModalWidgets();
   wireCategoryForm();
   wireSettings();
+  wireSyncSettings();
+  wireSyncLifecycleEvents();
 
   setActiveViewToggle(state.view);
   switchScreen('calendar');
   registerServiceWorker();
   requestNotificationPermission().finally(updateNotifPermissionUI);
   startReminderLoop();
+  initDriveSync();
 }
 
 init();

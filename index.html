@@ -220,6 +220,32 @@
         <p class="settings-note">Reminders fire while Orbit is open or running in the background. Keep it installed on your home screen for the best results — there's no server, so it can't wake your phone while fully closed.</p>
       </div>
 
+      <div class="settings-group">
+        <h2 class="settings-heading">Sync</h2>
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <span class="settings-row-label">Google Drive</span>
+            <span class="settings-row-sub" id="sync-account-status">Not connected</span>
+          </div>
+          <button class="pill-btn pill-btn-accent" id="btn-sync-connect">Connect</button>
+        </div>
+        <div class="settings-row hidden" id="row-sync-status">
+          <div class="settings-row-text">
+            <span class="settings-row-label">Status</span>
+            <span class="settings-row-sub" id="sync-status-text">Not synced yet</span>
+          </div>
+          <button class="pill-btn" id="btn-sync-now">Sync now</button>
+        </div>
+        <div class="settings-row hidden" id="row-sync-disconnect">
+          <div class="settings-row-text">
+            <span class="settings-row-label">Disconnect</span>
+            <span class="settings-row-sub">Stops syncing on this device. Your data on Drive and this device are kept.</span>
+          </div>
+          <button class="pill-btn pill-btn-danger" id="btn-sync-disconnect">Disconnect</button>
+        </div>
+        <p class="settings-note">Orbit stores one file in your own Google Drive (orbit-data.json) and syncs it across the devices you sign in on. Edits are last-write-wins — if you edit two devices offline at the same time, the last one to sync overwrites the other.</p>
+      </div>
+
       <div class="settings-group" id="install-group">
         <h2 class="settings-heading">Install Orbit</h2>
         <div id="install-content"></div>
@@ -413,6 +439,7 @@
 
 </div>
 
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="app.js"></script>
 </body>
 </html>
