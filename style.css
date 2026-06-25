@@ -176,6 +176,10 @@ a { color: var(--cyan); }
 }
 .topbar-controls.hidden { display: none; }
 
+.topbar-weather {
+  flex: 1;
+}
+
 .topbar-title {
   font-family: var(--font-display);
   font-weight: 600;
@@ -281,13 +285,41 @@ a { color: var(--cyan); }
 
 /* ===================== Calendar — shared ===================== */
 
+.calendar-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
 .calendar-label {
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 15px;
   color: var(--text-muted);
-  margin-bottom: 10px;
   padding: 0 2px;
+  white-space: nowrap;
+}
+
+.calendar-toolbar .topbar-controls {
+  flex: 0 1 auto;
+}
+
+.calendar-toolbar .icon-btn {
+  width: 26px;
+  height: 26px;
+  font-size: 16px;
+}
+
+.calendar-toolbar .pill-btn {
+  font-size: 11px;
+  padding: 5px 10px;
+}
+
+.calendar-toolbar .view-toggle-btn {
+  font-size: 10px;
+  padding: 4px 8px;
 }
 
 /* ----- Week view ----- */

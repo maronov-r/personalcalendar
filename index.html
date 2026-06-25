@@ -43,15 +43,7 @@
       <span class="brand-name">Orbit</span>
     </div>
 
-    <div class="topbar-controls" id="calendar-controls">
-      <button class="icon-btn" id="btn-prev" aria-label="Previous">‹</button>
-      <button class="pill-btn" id="btn-today">Today</button>
-      <button class="icon-btn" id="btn-next" aria-label="Next">›</button>
-      <div class="view-toggle">
-        <button class="view-toggle-btn active" id="btn-view-week" data-view="week">Week</button>
-        <button class="view-toggle-btn" id="btn-view-month" data-view="month">Month</button>
-      </div>
-    </div>
+    <div class="topbar-weather" id="topbar-weather"></div>
 
     <div class="topbar-controls hidden" id="people-controls">
       <div class="view-toggle" id="people-view-toggle">
@@ -79,7 +71,18 @@
   <main id="main-content">
 
     <section class="screen" id="screen-calendar">
-      <div class="calendar-label" id="calendar-label"></div>
+      <div class="calendar-toolbar">
+        <div class="calendar-label" id="calendar-label"></div>
+        <div class="topbar-controls" id="calendar-controls">
+          <button class="icon-btn" id="btn-prev" aria-label="Previous">‹</button>
+          <button class="pill-btn" id="btn-today">Today</button>
+          <button class="icon-btn" id="btn-next" aria-label="Next">›</button>
+          <div class="view-toggle">
+            <button class="view-toggle-btn active" id="btn-view-week" data-view="week">Week</button>
+            <button class="view-toggle-btn" id="btn-view-month" data-view="month">Month</button>
+          </div>
+        </div>
+      </div>
 
       <div class="month-view hidden" id="month-view">
         <div class="month-weekday-row" id="month-weekday-row"></div>
