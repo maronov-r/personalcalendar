@@ -9,6 +9,8 @@ const STORAGE_KEYS = {
   seeded: 'orbit_seeded',
 };
 
+const THEME_COLORS = { dark: '#0a0a0f', light: '#eef0f6' };
+
 const CATEGORIES = {
   work:     { label: 'Work / Focus',       color: '#00f5ff', icon: '💼' },
   social:   { label: 'Social / Friends',   color: '#bf5af2', icon: '🎉' },
@@ -54,7 +56,7 @@ function uid() {
 const state = {
   events: loadJSON(STORAGE_KEYS.events, []),
   contacts: loadJSON(STORAGE_KEYS.contacts, []),
-  settings: Object.assign({ dailyDigest: true, lastDigestDate: null }, loadJSON(STORAGE_KEYS.settings, {})),
+  settings: Object.assign({ dailyDigest: true, lastDigestDate: null, theme: 'dark' }, loadJSON(STORAGE_KEYS.settings, {})),
   view: 'week',
   currentDate: new Date(),
   screen: 'calendar',
@@ -71,6 +73,22 @@ const state = {
 function persistEvents() { saveJSON(STORAGE_KEYS.events, state.events); }
 function persistContacts() { saveJSON(STORAGE_KEYS.contacts, state.contacts); }
 function persistSettings() { saveJSON(STORAGE_KEYS.settings, state.settings); }
+
+/* ===================== Theme ===================== */
+
+function resolveTheme(theme) {
+  if (theme === 'auto') return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  return theme === 'light' ? 'light' : 'dark';
+}
+function applyTheme() {
+  const resolved = resolveTheme(state.settings.theme);
+  document.documentElement.setAttribute('data-theme', resolved);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', THEME_COLORS[resolved]);
+}
+window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+  if (state.settings.theme === 'auto') applyTheme();
+});
 
 /* ===================== Date utils ===================== */
 
@@ -976,8 +994,15 @@ function updateInstallUI() {
 
 function renderSettings() {
   document.getElementById('toggle-digest').checked = !!state.settings.dailyDigest;
+  setActiveThemeToggle(state.settings.theme);
   updateNotifPermissionUI();
   updateInstallUI();
+}
+
+function setActiveThemeToggle(theme) {
+  document.querySelectorAll('#theme-toggle .view-toggle-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.themeOption === theme);
+  });
 }
 
 async function requestNotificationPermission() {
@@ -996,6 +1021,14 @@ function wireSettings() {
   document.getElementById('toggle-digest').addEventListener('change', (e) => {
     state.settings.dailyDigest = e.target.checked;
     persistSettings();
+  });
+  document.getElementById('theme-toggle').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-theme-option]');
+    if (!btn) return;
+    state.settings.theme = btn.dataset.themeOption;
+    persistSettings();
+    applyTheme();
+    setActiveThemeToggle(state.settings.theme);
   });
   document.getElementById('btn-enable-notif').addEventListener('click', async () => {
     await requestNotificationPermission();
@@ -1097,6 +1130,7 @@ function registerServiceWorker() {
 /* ===================== Init ===================== */
 
 function init() {
+  applyTheme();
   seedDemoData();
 
   buildCategoryPicker();

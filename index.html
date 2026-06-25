@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>
+(function () {
+  try {
+    var settings = JSON.parse(localStorage.getItem('orbit_settings') || '{}');
+    var theme = settings.theme || 'dark';
+    if (theme === 'auto') theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+  } catch (e) { /* default dark theme from CSS applies */ }
+})();
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
 <title>Orbit — Your time. Your people.</title>
@@ -105,6 +115,21 @@
     </section>
 
     <section class="screen hidden" id="screen-settings">
+      <div class="settings-group">
+        <h2 class="settings-heading">Appearance</h2>
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <span class="settings-row-label">Theme</span>
+            <span class="settings-row-sub">Auto follows your device's setting.</span>
+          </div>
+          <div class="view-toggle" id="theme-toggle">
+            <button class="view-toggle-btn" id="btn-theme-dark" data-theme-option="dark">Dark</button>
+            <button class="view-toggle-btn" id="btn-theme-light" data-theme-option="light">Light</button>
+            <button class="view-toggle-btn" id="btn-theme-auto" data-theme-option="auto">Auto</button>
+          </div>
+        </div>
+      </div>
+
       <div class="settings-group">
         <h2 class="settings-heading">Notifications</h2>
         <div class="settings-row">
