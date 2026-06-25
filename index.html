@@ -80,6 +80,7 @@
           <div class="view-toggle">
             <button class="view-toggle-btn active" id="btn-view-week" data-view="week">Week</button>
             <button class="view-toggle-btn" id="btn-view-month" data-view="month">Month</button>
+            <button class="view-toggle-btn" id="btn-view-year" data-view="year">Year</button>
           </div>
         </div>
       </div>
@@ -90,14 +91,22 @@
       </div>
 
       <div class="week-view" id="week-view">
+        <div class="week-header-bar">
+          <div class="week-header-corner"></div>
+          <div class="week-header-scroll" id="week-header-scroll">
+            <div class="week-header" id="week-header"></div>
+          </div>
+        </div>
         <div class="week-scroll" id="week-scroll">
           <div class="week-grid">
-            <div class="grid-corner"></div>
-            <div class="week-header" id="week-header"></div>
             <div class="hours-col" id="hours-col"></div>
             <div class="days-grid" id="days-grid"></div>
           </div>
         </div>
+      </div>
+
+      <div class="year-view hidden" id="year-view">
+        <div class="year-grid" id="year-grid"></div>
       </div>
     </section>
 
@@ -482,11 +491,35 @@
           <div class="emoji-picker-row">
             <button type="button" class="emoji-trigger" id="contact-emoji-btn">🙂</button>
             <div class="field-col">
-              <label class="field-label" for="contact-name">Name</label>
-              <input class="field-input" id="contact-name" type="text" placeholder="Full name" required>
+              <label class="field-label" for="contact-firstname">Name</label>
+              <div class="field-row">
+                <input class="field-input" id="contact-firstname" type="text" placeholder="First name" required>
+                <input class="field-input" id="contact-lastname" type="text" placeholder="Last name">
+              </div>
             </div>
           </div>
           <div class="emoji-grid hidden" id="emoji-grid"></div>
+
+          <div class="field-row">
+            <div class="field-col">
+              <label class="field-label" for="contact-company">Company</label>
+              <input class="field-input" id="contact-company" type="text" placeholder="e.g. Acme Inc.">
+            </div>
+            <div class="field-col">
+              <label class="field-label" for="contact-phone">Phone</label>
+              <input class="field-input" id="contact-phone" type="tel" placeholder="Phone number">
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field-col">
+              <label class="field-label" for="contact-email">Email</label>
+              <input class="field-input" id="contact-email" type="email" placeholder="Email address">
+            </div>
+            <div class="field-col">
+              <label class="field-label" for="contact-address">Address</label>
+              <input class="field-input" id="contact-address" type="text" placeholder="Street, city">
+            </div>
+          </div>
 
           <label class="field-label">Circle</label>
           <div class="circle-picker" id="circle-picker"></div>

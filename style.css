@@ -88,12 +88,13 @@ a { color: var(--cyan); }
 #app {
   max-width: 430px;
   margin: 0 auto;
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
   background: var(--bg);
   display: flex;
   flex-direction: column;
   position: relative;
+  overflow: hidden;
   box-shadow: 0 0 60px rgba(var(--cyan-rgb), 0.04);
 }
 
@@ -102,7 +103,8 @@ a { color: var(--cyan); }
   #app {
     border-left: 1px solid var(--border);
     border-right: 1px solid var(--border);
-    min-height: 100vh;
+    height: 100vh;
+    height: 100dvh;
   }
 }
 
@@ -262,7 +264,6 @@ a { color: var(--cyan); }
   color: var(--cyan);
   box-shadow: 0 0 8px rgba(var(--cyan-rgb), 0.3);
 }
-
 /* ===================== Main / screens ===================== */
 
 #main-content {
@@ -324,20 +325,36 @@ a { color: var(--cyan); }
 
 /* ----- Week view ----- */
 
-.week-view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.week-view {
+  --day-col-width: 122px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 .week-view.hidden { display: none; }
+
+.week-header-bar {
+  display: flex;
+  flex-shrink: 0;
+  background: var(--bg);
+  padding-bottom: 6px;
+}
+.week-header-corner {
+  width: 40px;
+  flex-shrink: 0;
+}
+.week-header-scroll {
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+}
 
 .week-header {
   display: grid;
   grid-template-columns: repeat(7, var(--day-col-width));
   gap: 4px;
-  position: sticky;
-  top: 0;
-  z-index: 4;
-  background: var(--bg);
-  padding-bottom: 6px;
-  grid-column: 2;
-  grid-row: 1;
+  width: max-content;
 }
 
 .day-head {
@@ -381,23 +398,11 @@ a { color: var(--cyan); }
 }
 
 .week-grid {
-  --day-col-width: 122px;
   display: grid;
   grid-template-columns: 40px auto;
-  grid-template-rows: auto 1fr;
   position: relative;
   width: max-content;
   min-width: 100%;
-}
-
-.grid-corner {
-  position: sticky;
-  top: 0;
-  left: 0;
-  z-index: 6;
-  background: var(--bg);
-  grid-column: 1;
-  grid-row: 1;
 }
 
 .hours-col {
@@ -406,7 +411,6 @@ a { color: var(--cyan); }
   z-index: 3;
   background: var(--bg);
   grid-column: 1;
-  grid-row: 2;
 }
 .hour-label {
   height: 56px;
@@ -426,7 +430,6 @@ a { color: var(--cyan); }
   position: relative;
   gap: 0;
   grid-column: 2;
-  grid-row: 2;
 }
 
 .day-col {
@@ -644,6 +647,82 @@ body.is-dragging-event .event-pill:not(.is-dragging) {
   font-size: 8px;
   color: var(--text-muted);
   margin-top: 1px;
+}
+
+/* ----- Year view ----- */
+
+.year-view.hidden { display: none; }
+
+.year-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  padding-bottom: 10px;
+}
+
+.year-month {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px;
+}
+.year-month.is-current-month {
+  border-color: var(--cyan);
+  box-shadow: 0 0 10px rgba(var(--cyan-rgb), 0.2);
+}
+.year-month-label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12.5px;
+  text-align: center;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+.year-month.is-current-month .year-month-label { color: var(--cyan); }
+
+.year-month-dow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  margin-bottom: 2px;
+}
+.year-month-dow span {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  color: var(--text-muted);
+}
+
+.year-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+}
+.year-month-cell {
+  text-align: center;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--text);
+  padding: 2.5px 0;
+  border-radius: 3px;
+  cursor: pointer;
+  position: relative;
+}
+.year-month-cell.is-other-month { color: var(--text-muted); opacity: 0.35; }
+.year-month-cell.is-today {
+  background: rgba(var(--cyan-rgb), 0.18);
+  color: var(--cyan);
+  font-weight: 700;
+}
+.year-month-cell.has-events::after {
+  content: '';
+  position: absolute;
+  bottom: 1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--cyan);
 }
 
 /* ===================== CRM / People ===================== */
@@ -1308,6 +1387,7 @@ body.is-dragging-event .event-pill:not(.is-dragging) {
 }
 .field-row { display: flex; gap: 10px; }
 .field-row .field-col { flex: 1; }
+.field-row > .field-input { flex: 1; min-width: 0; }
 
 .field-input {
   width: 100%;

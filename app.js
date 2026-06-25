@@ -17,7 +17,7 @@ const THEME_COLORS = { dark: '#0a0a0f', light: '#eef0f6' };
 const DEFAULT_ACCENT = '#00f5ff';
 
 const DRIVE_CONFIG = {
-  clientId: '34287822417-m8v2kvrrmigra9e0c1o0mph63sggnsf5.apps.googleusercontent.com',
+  clientId: '595768927312-t59vj1f3ajbdbvd5ftge23l79elrdcd0.apps.googleusercontent.com',
   scope: 'https://www.googleapis.com/auth/drive.file',
   fileName: 'orbit-data.json',
 };
@@ -498,6 +498,7 @@ function applyBubbleSettings() {
 function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
 function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
 function addMonths(d, n) { return new Date(d.getFullYear(), d.getMonth() + n, 1); }
+function addYears(d, n) { return new Date(d.getFullYear() + n, d.getMonth(), d.getDate()); }
 function isSameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
 function startOfWeek(d) {
   const x = startOfDay(d);
@@ -717,15 +718,12 @@ function wireBottomNav() {
 
 function renderCalendar() {
   updateCalendarLabel();
-  if (state.view === 'week') {
-    document.getElementById('week-view').classList.remove('hidden');
-    document.getElementById('month-view').classList.add('hidden');
-    renderWeek();
-  } else {
-    document.getElementById('week-view').classList.add('hidden');
-    document.getElementById('month-view').classList.remove('hidden');
-    renderMonth();
-  }
+  document.getElementById('week-view').classList.toggle('hidden', state.view !== 'week');
+  document.getElementById('month-view').classList.toggle('hidden', state.view !== 'month');
+  document.getElementById('year-view').classList.toggle('hidden', state.view !== 'year');
+  if (state.view === 'week') renderWeek();
+  else if (state.view === 'month') renderMonth();
+  else renderYear();
 }
 
 function updateCalendarLabel() {
@@ -738,6 +736,8 @@ function updateCalendarLabel() {
     } else {
       label.textContent = `${formatDateShort(start)} – ${formatDateShort(end)}, ${end.getFullYear()}`;
     }
+  } else if (state.view === 'year') {
+    label.textContent = String(state.currentDate.getFullYear());
   } else {
     label.textContent = formatMonthYear(state.currentDate);
   }
@@ -1183,35 +1183,113 @@ function renderMonth() {
   }
 }
 
+function renderYear() {
+  const grid = document.getElementById('year-grid');
+  grid.innerHTML = '';
+  const year = state.currentDate.getFullYear();
+  const today = new Date();
+  const dowLabels = state.settings.weekStartsOn === 'sunday'
+    ? ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+    : ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+  for (let m = 0; m < 12; m++) {
+    const monthStart = new Date(year, m, 1);
+    const gridStart = startOfWeek(monthStart);
+    const monthEl = document.createElement('div');
+    monthEl.className = 'year-month';
+    if (today.getFullYear() === year && today.getMonth() === m) monthEl.classList.add('is-current-month');
+    monthEl.innerHTML = `
+      <div class="year-month-label">${monthStart.toLocaleDateString(undefined, { month: 'long' })}</div>
+      <div class="year-month-dow">${dowLabels.map(d => `<span>${d}</span>`).join('')}</div>
+      <div class="year-month-grid"></div>
+    `;
+
+    const cellsWrap = monthEl.querySelector('.year-month-grid');
+    for (let i = 0; i < 42; i++) {
+      const d = addDays(gridStart, i);
+      const cell = document.createElement('div');
+      cell.className = 'year-month-cell';
+      if (d.getMonth() !== m) cell.classList.add('is-other-month');
+      if (isSameDay(d, today)) cell.classList.add('is-today');
+      if (state.events.some(ev => isSameDay(new Date(ev.start), d))) cell.classList.add('has-events');
+      cell.textContent = d.getDate();
+      cell.addEventListener('click', () => {
+        state.currentDate = d;
+        state.view = 'week';
+        setActiveViewToggle('week');
+        document.getElementById('week-scroll').removeAttribute('data-scrolled');
+        renderCalendar();
+        resetWeekScrollLeft();
+      });
+      cellsWrap.appendChild(cell);
+    }
+
+    monthEl.querySelector('.year-month-label').addEventListener('click', () => {
+      state.currentDate = monthStart;
+      state.view = 'month';
+      setActiveViewToggle('month');
+      renderCalendar();
+    });
+
+    grid.appendChild(monthEl);
+  }
+}
+
 function setActiveViewToggle(view) {
   document.getElementById('btn-view-week').classList.toggle('active', view === 'week');
   document.getElementById('btn-view-month').classList.toggle('active', view === 'month');
+  document.getElementById('btn-view-year').classList.toggle('active', view === 'year');
 }
 
 function resetWeekScrollLeft() {
   const el = document.getElementById('week-scroll');
   if (el) el.scrollLeft = 0;
+  const headerEl = document.getElementById('week-header-scroll');
+  if (headerEl) headerEl.scrollLeft = 0;
+}
+
+function wireWeekHeaderScrollSync() {
+  const scrollEl = document.getElementById('week-scroll');
+  const headerScrollEl = document.getElementById('week-header-scroll');
+  scrollEl.addEventListener('scroll', () => { headerScrollEl.scrollLeft = scrollEl.scrollLeft; });
+}
+
+function scrollWeekToCurrentTime() {
+  const scrollEl = document.getElementById('week-scroll');
+  if (!scrollEl) return;
+  const dayStartHour = getDayStartHour(), dayEndHour = getDayEndHour();
+  const nowMin = Math.min(Math.max(minutesOf(new Date()), dayStartHour * 60), dayEndHour * 60);
+  const offsetPx = ((nowMin - dayStartHour * 60) / 60) * getHourHeight();
+  scrollEl.scrollTop = Math.max(0, offsetPx - scrollEl.clientHeight / 2);
+  scrollEl.dataset.scrolled = '1';
+}
+
+function stepCurrentDate(dir) {
+  if (state.view === 'week') return addDays(state.currentDate, 7 * dir);
+  if (state.view === 'year') return addYears(state.currentDate, dir);
+  return addMonths(state.currentDate, dir);
 }
 
 function wireCalendarControls() {
   document.getElementById('btn-prev').addEventListener('click', () => {
-    state.currentDate = state.view === 'week' ? addDays(state.currentDate, -7) : addMonths(state.currentDate, -1);
+    state.currentDate = stepCurrentDate(-1);
     renderCalendar();
     resetWeekScrollLeft();
   });
   document.getElementById('btn-next').addEventListener('click', () => {
-    state.currentDate = state.view === 'week' ? addDays(state.currentDate, 7) : addMonths(state.currentDate, 1);
+    state.currentDate = stepCurrentDate(1);
     renderCalendar();
     resetWeekScrollLeft();
   });
   document.getElementById('btn-today').addEventListener('click', () => {
     state.currentDate = new Date();
-    document.getElementById('week-scroll').removeAttribute('data-scrolled');
     renderCalendar();
     resetWeekScrollLeft();
+    if (state.view === 'week') scrollWeekToCurrentTime();
   });
   document.getElementById('btn-view-week').addEventListener('click', () => { state.view = 'week'; setActiveViewToggle('week'); renderCalendar(); });
   document.getElementById('btn-view-month').addEventListener('click', () => { state.view = 'month'; setActiveViewToggle('month'); renderCalendar(); });
+  document.getElementById('btn-view-year').addEventListener('click', () => { state.view = 'year'; setActiveViewToggle('year'); renderCalendar(); });
 }
 
 /* ===================== Event modal ===================== */
@@ -1712,6 +1790,12 @@ function renderContactProfile(contactId) {
   const nextText = status.nextPlanned ? formatDateShort(status.nextPlanned) : '—';
   const pastHtml = past.length ? past.map(eventRowHtml).join('') : '<p class="profile-notes profile-notes-empty">No past events linked yet.</p>';
   const futureHtml = future.length ? future.map(eventRowHtml).join('') : '<p class="profile-notes profile-notes-empty">Nothing planned yet.</p>';
+  const detailParts = [];
+  if (c.company) detailParts.push(`🏢 ${escapeHtml(c.company)}`);
+  if (c.phone) detailParts.push(`<a class="profile-link" href="tel:${escapeHtml(c.phone)}">📞 ${escapeHtml(c.phone)}</a>`);
+  if (c.email) detailParts.push(`<a class="profile-link" href="mailto:${escapeHtml(c.email)}">✉️ ${escapeHtml(c.email)}</a>`);
+  if (c.address) detailParts.push(`📍 ${escapeHtml(c.address)}`);
+  const detailsHtml = detailParts.length ? detailParts.join('<br>') : '';
   const statusLabel = status.bucket === 'overdue' ? 'Reach out' : status.bucket === 'upcoming' ? 'Upcoming' : 'All good';
   const circle = getCircle(c.circleId);
   const introducedByContact = c.introducedBy ? state.contacts.find(x => x.id === c.introducedBy) : null;
@@ -1737,6 +1821,7 @@ function renderContactProfile(contactId) {
       <button type="button" class="pill-btn pill-btn-primary" id="btn-plan-something">Plan something</button>
       <button type="button" class="pill-btn" id="btn-edit-contact">Edit</button>
     </div>
+    ${detailsHtml ? `<div class="profile-section-title">Details</div><div class="profile-notes">${detailsHtml}</div>` : ''}
     <div class="profile-section-title">Connection</div>
     <div class="profile-notes${connectionParts.length ? '' : ' profile-notes-empty'}">${connectionHtml}</div>
     <div class="profile-section-title">Notes</div>
@@ -1848,6 +1933,11 @@ function wireContactModalWidgets() {
   });
 }
 
+function splitName(fullName) {
+  const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
+  return { firstName: parts[0] || '', lastName: parts.slice(1).join(' ') };
+}
+
 function openContactModal(contactId) {
   state.editingContactId = contactId || null;
   document.getElementById('contact-form').reset();
@@ -1858,8 +1948,16 @@ function openContactModal(contactId) {
 
   if (contactId) {
     const c = state.contacts.find(x => x.id === contactId);
+    const { firstName, lastName } = (c.firstName != null || c.lastName != null)
+      ? { firstName: c.firstName || '', lastName: c.lastName || '' }
+      : splitName(c.name);
     document.getElementById('contact-modal-title').textContent = 'Edit person';
-    document.getElementById('contact-name').value = c.name;
+    document.getElementById('contact-firstname').value = firstName;
+    document.getElementById('contact-lastname').value = lastName;
+    document.getElementById('contact-company').value = c.company || '';
+    document.getElementById('contact-phone').value = c.phone || '';
+    document.getElementById('contact-email').value = c.email || '';
+    document.getElementById('contact-address').value = c.address || '';
     state.selectedEmoji = c.emoji;
     document.getElementById('contact-emoji-btn').textContent = c.emoji;
     state.contactTags = (c.tags || []).slice();
@@ -1871,6 +1969,12 @@ function openContactModal(contactId) {
     document.getElementById('contact-notes').value = c.notes || '';
   } else {
     document.getElementById('contact-modal-title').textContent = 'New person';
+    document.getElementById('contact-firstname').value = '';
+    document.getElementById('contact-lastname').value = '';
+    document.getElementById('contact-company').value = '';
+    document.getElementById('contact-phone').value = '';
+    document.getElementById('contact-email').value = '';
+    document.getElementById('contact-address').value = '';
     state.selectedEmoji = '🙂';
     document.getElementById('contact-emoji-btn').textContent = '🙂';
     state.contactTags = [];
@@ -1891,8 +1995,14 @@ function wireContactForm() {
 
   document.getElementById('contact-form').addEventListener('submit', (e) => {
     e.preventDefault();
-    const name = document.getElementById('contact-name').value.trim();
+    const firstName = document.getElementById('contact-firstname').value.trim();
+    const lastName = document.getElementById('contact-lastname').value.trim();
+    const name = [firstName, lastName].filter(Boolean).join(' ');
     if (!name) return;
+    const company = document.getElementById('contact-company').value.trim();
+    const phone = document.getElementById('contact-phone').value.trim();
+    const email = document.getElementById('contact-email').value.trim();
+    const address = document.getElementById('contact-address').value.trim();
     const lastSeen = document.getElementById('contact-lastseen').value || null;
     const followUpFrequency = document.getElementById('contact-frequency').value;
     const notes = document.getElementById('contact-notes').value.trim();
@@ -1902,11 +2012,13 @@ function wireContactForm() {
 
     if (state.editingContactId) {
       const c = state.contacts.find(x => x.id === state.editingContactId);
-      c.name = name; c.emoji = state.selectedEmoji; c.tags = state.contactTags.slice();
+      c.name = name; c.firstName = firstName; c.lastName = lastName;
+      c.company = company; c.phone = phone; c.email = email; c.address = address;
+      c.emoji = state.selectedEmoji; c.tags = state.contactTags.slice();
       c.lastSeen = lastSeen; c.followUpFrequency = followUpFrequency; c.notes = notes;
       c.circleId = circleId; c.howMet = howMet; c.introducedBy = introducedBy;
     } else {
-      state.contacts.push({ id: uid(), name, emoji: state.selectedEmoji, tags: state.contactTags.slice(), lastSeen, followUpFrequency, notes, circleId, howMet, introducedBy, createdAt: new Date().toISOString() });
+      state.contacts.push({ id: uid(), name, firstName, lastName, company, phone, email, address, emoji: state.selectedEmoji, tags: state.contactTags.slice(), lastSeen, followUpFrequency, notes, circleId, howMet, introducedBy, createdAt: new Date().toISOString() });
     }
     persistContacts();
     closeModal('modal-contact');
@@ -2515,6 +2627,7 @@ function init() {
   wireGenericModalClosers();
   wireBottomNav();
   wireCalendarControls();
+  wireWeekHeaderScrollSync();
   wireContactCombobox();
   wireEventForm();
   wireTaskForm();
