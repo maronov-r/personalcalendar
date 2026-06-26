@@ -61,6 +61,8 @@ Setting it up requires a few minutes in the Google Cloud Console, under your own
 
 Trade-off: staying in "Testing" mode (recommended) means your sign-in expires after about a week, so you'll occasionally need to tap **Connect** again on each device — a small price for skipping Google's full app-verification process, which isn't worth it for an app only you use.
 
+**Troubleshooting "Error 400: origin_mismatch"**: Google checks the exact origin (scheme + host, no path) the page is served from against the **Authorized JavaScript origins** list on your OAuth Client. Every place you open Orbit from — `http://localhost:8899` while developing, `https://<your-github-username>.github.io` once on Pages, or any custom domain you add later — needs to be added there individually (**APIs & Services → Credentials → your Client ID → Authorized JavaScript origins → + Add URI**). Forgetting to add a new origin after deploying somewhere new is the most common cause of this error.
+
 ## Data & privacy
 
 All events and contacts are stored in your browser's `localStorage` on your device. Nothing is sent to a server unless you explicitly connect Google Drive sync (see above), in which case your data is written only to a single file in *your own* Drive — never to any server we operate, because there is none. Clearing your browser data (or using "Clear all data" in Settings) removes everything locally; disconnecting sync in Settings stops syncing but leaves the Drive file and your local data intact.
