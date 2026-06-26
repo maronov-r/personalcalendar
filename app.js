@@ -16,9 +16,12 @@ const STORAGE_KEYS = {
 const THEME_COLORS = { dark: '#0a0a0f', light: '#eef0f6' };
 const DEFAULT_ACCENT = '#00f5ff';
 
+const SCOPE_DRIVE_FILE = 'https://www.googleapis.com/auth/drive.file';
+const SCOPE_CALENDAR_EVENTS = 'https://www.googleapis.com/auth/calendar.events';
+const SCOPE_CALENDAR_READONLY = 'https://www.googleapis.com/auth/calendar.readonly';
 const DRIVE_CONFIG = {
   clientId: '595768927312-t59vj1f3ajbdbvd5ftge23l79elrdcd0.apps.googleusercontent.com',
-  scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly',
+  scope: [SCOPE_DRIVE_FILE, SCOPE_CALENDAR_EVENTS, SCOPE_CALENDAR_READONLY].join(' '),
   fileName: 'orbit-data.json',
 };
 const DRIVE_FILES_API = 'https://www.googleapis.com/drive/v3/files';
@@ -180,7 +183,7 @@ function getDayEndHour() { return state.settings.dayEndHour; }
 
 /* ===================== Drive sync ===================== */
 
-const driveSession = { status: 'signed-out', tokenClient: null, accessToken: null, tokenExpiresAt: 0, busy: false, queuedRetry: false, importBusy: false };
+const driveSession = { status: 'signed-out', tokenClient: null, accessToken: null, tokenExpiresAt: 0, grantedScope: '', busy: false, queuedRetry: false, importBusy: false };
 let syncDebounceTimer = null;
 let tokenResolve = null;
 let tokenReject = null;
@@ -454,6 +457,7 @@ function getTokenClient() {
         if (resp && resp.access_token) {
           driveSession.accessToken = resp.access_token;
           driveSession.tokenExpiresAt = Date.now() + Number(resp.expires_in || 3600) * 1000;
+          driveSession.grantedScope = resp.scope || '';
           if (resolve) resolve(resp.access_token);
         } else if (reject) {
           reject(new Error('No access token in response'));
@@ -477,10 +481,39 @@ function requestAccessToken(promptMode) {
   });
 }
 
-async function ensureAccessToken() {
-  if (driveSession.accessToken && Date.now() < driveSession.tokenExpiresAt - 60000) return driveSession.accessToken;
+function requiredScopes() {
+  const scopes = [SCOPE_DRIVE_FILE];
+  if (state.sync.calendarSync) scopes.push(SCOPE_CALENDAR_EVENTS);
+  if (state.sync.calendarImport) scopes.push(SCOPE_CALENDAR_READONLY);
+  return scopes;
+}
+
+function hasAllScopes(scopes) {
+  const granted = (driveSession.grantedScope || '').split(' ');
+  return scopes.every((s) => granted.includes(s));
+}
+
+async function acquireToken(scopes, interactive) {
+  if (driveSession.accessToken && Date.now() < driveSession.tokenExpiresAt - 60000 && hasAllScopes(scopes)) {
+    return driveSession.accessToken;
+  }
   if (!isGisLoaded()) return null;
-  try { return await requestAccessToken(''); } catch (e) { return null; }
+  try {
+    const token = await requestAccessToken('');
+    if (hasAllScopes(scopes)) return token;
+    if (!interactive) return null;
+  } catch (e) {
+    if (!interactive) return null;
+  }
+  try {
+    return await requestAccessToken('consent');
+  } catch (e) {
+    return null;
+  }
+}
+
+async function ensureAccessToken(interactive) {
+  return acquireToken(requiredScopes(), !!interactive);
 }
 
 async function connectDrive() {
@@ -488,7 +521,7 @@ async function connectDrive() {
   driveSession.status = 'connecting';
   updateSyncUI();
   try {
-    const token = await requestAccessToken();
+    const token = await acquireToken(requiredScopes(), true);
     if (!token) throw new Error('no token');
     state.sync.connected = true;
     persistSync();
@@ -514,15 +547,15 @@ function disconnectDrive() {
   showToast('Disconnected from Google Drive');
 }
 
-async function triggerSync(reason) {
+async function triggerSync(reason, interactive) {
   if (!state.sync.connected) return;
   if (driveSession.busy) { driveSession.queuedRetry = true; return; }
   driveSession.busy = true;
   driveSession.status = 'syncing';
   updateSyncUI();
   try {
-    const token = await ensureAccessToken();
-    if (!token) { driveSession.status = 'needs-reauth'; return; }
+    const token = await ensureAccessToken(interactive);
+    if (!token) { driveSession.status = 'needs-reauth'; if (interactive) showToast('Could not reconnect to Google Drive — try again'); return; }
     if (!state.sync.driveFileId) {
       state.sync.driveFileId = await findOrCreateDriveFile(token);
       persistSync();
@@ -552,16 +585,17 @@ async function triggerSync(reason) {
   }
 }
 
-async function triggerCalendarImport(reason) {
+async function triggerCalendarImport(reason, interactive) {
   if (!state.sync.calendarImport) return;
   if (driveSession.importBusy) return;
   driveSession.importBusy = true;
   try {
-    const token = await ensureAccessToken();
-    if (!token) return;
+    const token = await ensureAccessToken(interactive);
+    if (!token) { if (interactive) showToast('Could not get permission to import — try again'); return; }
     await importGoogleCalendarEvents(token);
   } catch (e) {
-    // best-effort background refresh; failures are silent and retried on the next lifecycle event
+    // best-effort background refresh outside the interactive path; failures are silent and retried on the next lifecycle event
+    if (interactive) showToast('Could not import Google Calendar events — try again');
   } finally {
     driveSession.importBusy = false;
   }
@@ -661,7 +695,7 @@ function wireSyncSettings() {
   document.getElementById('btn-sync-connect').addEventListener('click', connectDrive);
   document.getElementById('btn-sync-now').addEventListener('click', () => {
     if (driveSession.status === 'needs-reauth') connectDrive();
-    else triggerSync('manual');
+    else triggerSync('manual', true);
   });
   document.getElementById('btn-sync-disconnect').addEventListener('click', () => {
     confirmDialog('Stop syncing this device with Google Drive? Your data stays on this device and in Drive.', () => {
@@ -673,7 +707,7 @@ function wireSyncSettings() {
     persistSync();
     if (state.sync.calendarSync) {
       showToast('Syncing events to Google Calendar…');
-      triggerSync('calendar-enable');
+      triggerSync('calendar-enable', true);
     } else {
       showToast('Stopped syncing to Google Calendar');
     }
@@ -683,7 +717,7 @@ function wireSyncSettings() {
     persistSync();
     if (state.sync.calendarImport) {
       showToast('Importing events from Google Calendar…');
-      triggerCalendarImport('import-enable');
+      triggerCalendarImport('import-enable', true);
     } else {
       showToast('Stopped importing from Google Calendar');
     }
