@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'orbit-cache-v5';
+const CACHE_NAME = 'orbit-cache-v6';
 const APP_SHELL = [
   './',
   './index.html',

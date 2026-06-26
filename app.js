@@ -18,11 +18,13 @@ const DEFAULT_ACCENT = '#00f5ff';
 
 const DRIVE_CONFIG = {
   clientId: '595768927312-t59vj1f3ajbdbvd5ftge23l79elrdcd0.apps.googleusercontent.com',
-  scope: 'https://www.googleapis.com/auth/drive.file',
+  scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.events',
   fileName: 'orbit-data.json',
 };
 const DRIVE_FILES_API = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files';
+const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
+const ORBIT_CALENDAR_NAME = 'Orbit';
 
 const DEFAULT_CATEGORIES = [
   { id: 'work',     label: 'Work / Focus',       color: '#00f5ff', icon: '💼' },
@@ -108,7 +110,7 @@ const state = {
   categories: loadJSON(STORAGE_KEYS.categories, null) || DEFAULT_CATEGORIES.map(c => Object.assign({}, c)),
   circles: loadJSON(STORAGE_KEYS.circles, null) || DEFAULT_CIRCLES.map(c => Object.assign({}, c)),
   settings: initialSettings,
-  sync: Object.assign({ connected: false, driveFileId: null, lastSyncedAt: null, lastLocalChangeAt: Date.now() }, loadJSON(STORAGE_KEYS.sync, {})),
+  sync: Object.assign({ connected: false, driveFileId: null, lastSyncedAt: null, lastLocalChangeAt: Date.now(), calendarSync: false, googleCalendarId: null, pendingCalendarDeletes: [] }, loadJSON(STORAGE_KEYS.sync, {})),
   view: initialSettings.defaultView === 'month' ? 'month' : 'week',
   peopleView: initialSettings.peopleView === 'bubbles' ? 'bubbles' : 'list',
   currentDate: new Date(),
@@ -235,12 +237,12 @@ function applyRemoteDoc(remote) {
   if (state.screen === 'settings') renderSettings();
 }
 
-async function driveFetch(token, url, options) {
+async function gFetch(token, url, options) {
   const res = await fetch(url, Object.assign({}, options, {
     headers: Object.assign({ Authorization: `Bearer ${token}` }, (options && options.headers) || {}),
   }));
   if (!res.ok) {
-    const err = new Error('Drive request failed: ' + res.status);
+    const err = new Error('Google API request failed: ' + res.status);
     err.status = res.status;
     err.authError = res.status === 401 || res.status === 403;
     throw err;
@@ -250,10 +252,10 @@ async function driveFetch(token, url, options) {
 
 async function findOrCreateDriveFile(token) {
   const q = encodeURIComponent(`name='${DRIVE_CONFIG.fileName}' and trashed=false`);
-  const listRes = await driveFetch(token, `${DRIVE_FILES_API}?q=${q}&spaces=drive&fields=files(id)`);
+  const listRes = await gFetch(token, `${DRIVE_FILES_API}?q=${q}&spaces=drive&fields=files(id)`);
   const listData = await listRes.json();
   if (listData.files && listData.files.length) return listData.files[0].id;
-  const createRes = await driveFetch(token, DRIVE_FILES_API, {
+  const createRes = await gFetch(token, DRIVE_FILES_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: DRIVE_CONFIG.fileName }),
@@ -263,18 +265,86 @@ async function findOrCreateDriveFile(token) {
 }
 
 async function pullFromDrive(token, fileId) {
-  const res = await driveFetch(token, `${DRIVE_FILES_API}/${fileId}?alt=media`);
+  const res = await gFetch(token, `${DRIVE_FILES_API}/${fileId}?alt=media`);
   const text = await res.text();
   if (!text) return null;
   try { return JSON.parse(text); } catch (e) { return null; }
 }
 
 async function pushToDrive(token, fileId, doc) {
-  await driveFetch(token, `${DRIVE_UPLOAD_API}/${fileId}?uploadType=media`, {
+  await gFetch(token, `${DRIVE_UPLOAD_API}/${fileId}?uploadType=media`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(doc),
   });
+}
+
+async function findOrCreateOrbitCalendar(token) {
+  const listRes = await gFetch(token, `${CALENDAR_API}/users/me/calendarList?minAccessRole=owner&maxResults=250`);
+  const listData = await listRes.json();
+  const existing = (listData.items || []).find((c) => c.summary === ORBIT_CALENDAR_NAME);
+  if (existing) return existing.id;
+  const createRes = await gFetch(token, `${CALENDAR_API}/calendars`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ summary: ORBIT_CALENDAR_NAME, description: 'Events synced from the Orbit app' }),
+  });
+  const created = await createRes.json();
+  return created.id;
+}
+
+function eventToCalendarResource(ev) {
+  return {
+    summary: ev.title,
+    description: ev.notes || undefined,
+    start: { dateTime: ev.start },
+    end: { dateTime: ev.end },
+  };
+}
+
+async function syncEventsToCalendar(token) {
+  if (!state.sync.googleCalendarId) {
+    state.sync.googleCalendarId = await findOrCreateOrbitCalendar(token);
+    persistSync();
+  }
+  const calId = state.sync.googleCalendarId;
+
+  if (state.sync.pendingCalendarDeletes && state.sync.pendingCalendarDeletes.length) {
+    const remaining = [];
+    for (const gcalId of state.sync.pendingCalendarDeletes) {
+      try {
+        await gFetch(token, `${CALENDAR_API}/calendars/${calId}/events/${gcalId}`, { method: 'DELETE' });
+      } catch (e) {
+        if (e.status !== 404 && e.status !== 410) remaining.push(gcalId);
+      }
+    }
+    state.sync.pendingCalendarDeletes = remaining;
+    persistSync();
+  }
+
+  let changed = false;
+  for (const ev of state.events) {
+    if (ev.gcalEventId && !ev.gcalDirty) continue;
+    const body = JSON.stringify(eventToCalendarResource(ev));
+    if (ev.gcalEventId) {
+      await gFetch(token, `${CALENDAR_API}/calendars/${calId}/events/${ev.gcalEventId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+    } else {
+      const res = await gFetch(token, `${CALENDAR_API}/calendars/${calId}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      const created = await res.json();
+      ev.gcalEventId = created.id;
+    }
+    ev.gcalDirty = false;
+    changed = true;
+  }
+  if (changed) saveJSON(STORAGE_KEYS.events, state.events);
 }
 
 function getTokenClient() {
@@ -367,6 +437,13 @@ async function triggerSync(reason) {
     } else {
       await pushToDrive(token, state.sync.driveFileId, buildSyncDoc());
     }
+    if (state.sync.calendarSync) {
+      try {
+        await syncEventsToCalendar(token);
+      } catch (e) {
+        if (e && e.authError) throw e;
+      }
+    }
     state.sync.lastSyncedAt = Date.now();
     persistSync();
     driveSession.status = 'idle';
@@ -411,6 +488,13 @@ function updateSyncUI() {
   }
   connectBtn.disabled = driveSession.status === 'connecting';
   syncNowBtn.disabled = driveSession.status === 'connecting' || driveSession.status === 'syncing';
+
+  const calendarRow = document.getElementById('row-calendar-sync');
+  const calendarNote = document.getElementById('calendar-sync-note');
+  const calendarToggle = document.getElementById('toggle-calendar-sync');
+  calendarRow.classList.toggle('hidden', !connected);
+  calendarNote.classList.toggle('hidden', !connected);
+  calendarToggle.checked = state.sync.calendarSync;
 }
 
 function waitForGis(attempt) {
@@ -457,6 +541,16 @@ function wireSyncSettings() {
     confirmDialog('Stop syncing this device with Google Drive? Your data stays on this device and in Drive.', () => {
       disconnectDrive();
     }, { title: 'Disconnect Google Drive', okLabel: 'Disconnect' });
+  });
+  document.getElementById('toggle-calendar-sync').addEventListener('change', (e) => {
+    state.sync.calendarSync = e.target.checked;
+    persistSync();
+    if (state.sync.calendarSync) {
+      showToast('Syncing events to Google Calendar…');
+      triggerSync('calendar-enable');
+    } else {
+      showToast('Stopped syncing to Google Calendar');
+    }
   });
 }
 
@@ -1491,6 +1585,7 @@ function wireEventForm() {
       if (ev.reminderMinutes !== reminderMinutes) ev.reminderFired = false;
       ev.reminderMinutes = reminderMinutes;
       ev.contactId = contactId;
+      if (ev.gcalEventId) ev.gcalDirty = true;
     } else {
       state.events.push({
         id: uid(), title, start: start.toISOString(), end: end.toISOString(),
@@ -1510,6 +1605,11 @@ function wireEventForm() {
   document.getElementById('event-delete').addEventListener('click', () => {
     const id = state.editingEventId;
     confirmDialog("Delete this event? This can't be undone.", () => {
+      const ev = state.events.find(e => e.id === id);
+      if (ev && ev.gcalEventId) {
+        state.sync.pendingCalendarDeletes.push(ev.gcalEventId);
+        persistSync();
+      }
       state.events = state.events.filter(e => e.id !== id);
       persistEvents();
       closeModal('modal-event');
