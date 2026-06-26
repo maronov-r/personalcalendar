@@ -18,13 +18,16 @@ const DEFAULT_ACCENT = '#00f5ff';
 
 const DRIVE_CONFIG = {
   clientId: '595768927312-t59vj1f3ajbdbvd5ftge23l79elrdcd0.apps.googleusercontent.com',
-  scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.events',
+  scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly',
   fileName: 'orbit-data.json',
 };
 const DRIVE_FILES_API = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files';
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
 const ORBIT_CALENDAR_NAME = 'Orbit';
+const IMPORT_CATEGORY_ID = 'gcal-imported';
+const IMPORT_WINDOW_MONTHS_BACK = 1;
+const IMPORT_WINDOW_MONTHS_AHEAD = 6;
 
 const DEFAULT_CATEGORIES = [
   { id: 'work',     label: 'Work / Focus',       color: '#00f5ff', icon: '💼' },
@@ -110,7 +113,7 @@ const state = {
   categories: loadJSON(STORAGE_KEYS.categories, null) || DEFAULT_CATEGORIES.map(c => Object.assign({}, c)),
   circles: loadJSON(STORAGE_KEYS.circles, null) || DEFAULT_CIRCLES.map(c => Object.assign({}, c)),
   settings: initialSettings,
-  sync: Object.assign({ connected: false, driveFileId: null, lastSyncedAt: null, lastLocalChangeAt: Date.now(), calendarSync: false, googleCalendarId: null, pendingCalendarDeletes: [] }, loadJSON(STORAGE_KEYS.sync, {})),
+  sync: Object.assign({ connected: false, driveFileId: null, lastSyncedAt: null, lastLocalChangeAt: Date.now(), calendarSync: false, googleCalendarId: null, pendingCalendarDeletes: [], calendarImport: false, lastImportAt: null }, loadJSON(STORAGE_KEYS.sync, {})),
   view: initialSettings.defaultView === 'month' ? 'month' : 'week',
   peopleView: initialSettings.peopleView === 'bubbles' ? 'bubbles' : 'list',
   currentDate: new Date(),
@@ -177,7 +180,7 @@ function getDayEndHour() { return state.settings.dayEndHour; }
 
 /* ===================== Drive sync ===================== */
 
-const driveSession = { status: 'signed-out', tokenClient: null, accessToken: null, tokenExpiresAt: 0, busy: false, queuedRetry: false };
+const driveSession = { status: 'signed-out', tokenClient: null, accessToken: null, tokenExpiresAt: 0, busy: false, queuedRetry: false, importBusy: false };
 let syncDebounceTimer = null;
 let tokenResolve = null;
 let tokenReject = null;
@@ -324,6 +327,7 @@ async function syncEventsToCalendar(token) {
 
   let changed = false;
   for (const ev of state.events) {
+    if (ev.gcalImported) continue;
     if (ev.gcalEventId && !ev.gcalDirty) continue;
     const body = JSON.stringify(eventToCalendarResource(ev));
     if (ev.gcalEventId) {
@@ -345,6 +349,98 @@ async function syncEventsToCalendar(token) {
     changed = true;
   }
   if (changed) saveJSON(STORAGE_KEYS.events, state.events);
+}
+
+function ensureImportCategory() {
+  if (state.categories.some((c) => c.id === IMPORT_CATEGORY_ID)) return;
+  state.categories.push({ id: IMPORT_CATEGORY_ID, label: 'Google Calendar', color: '#8e8e93', icon: '📅' });
+  persistCategories();
+  buildCategoryPicker();
+  buildTaskCategoryPicker();
+}
+
+function getImportWindow() {
+  const now = new Date();
+  const timeMin = new Date(now.getFullYear(), now.getMonth() - IMPORT_WINDOW_MONTHS_BACK, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds());
+  const timeMax = new Date(now.getFullYear(), now.getMonth() + IMPORT_WINDOW_MONTHS_AHEAD, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds());
+  return { timeMin: timeMin.toISOString(), timeMax: timeMax.toISOString() };
+}
+
+async function listImportableCalendars(token) {
+  const res = await gFetch(token, `${CALENDAR_API}/users/me/calendarList?maxResults=250&fields=items(id,summary)`);
+  const data = await res.json();
+  return (data.items || []).filter((c) => c.id !== state.sync.googleCalendarId && c.summary !== ORBIT_CALENDAR_NAME);
+}
+
+async function listEventsPage(token, calendarId, importWindow, pageToken) {
+  const params = new URLSearchParams({
+    singleEvents: 'true',
+    orderBy: 'startTime',
+    timeMin: importWindow.timeMin,
+    timeMax: importWindow.timeMax,
+    maxResults: '250',
+  });
+  if (pageToken) params.set('pageToken', pageToken);
+  const res = await gFetch(token, `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`);
+  return res.json();
+}
+
+function parseGoogleDateOnly(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function googleEventToOrbitEvent(gEv, calendarId) {
+  const allDay = !!(gEv.start && gEv.start.date);
+  const start = allDay ? parseGoogleDateOnly(gEv.start.date) : new Date(gEv.start.dateTime);
+  const end = allDay ? parseGoogleDateOnly(gEv.end.date) : new Date(gEv.end.dateTime);
+  return {
+    id: 'gcal-' + gEv.id,
+    title: gEv.summary || '(untitled)',
+    start: start.toISOString(),
+    end: end.toISOString(),
+    category: IMPORT_CATEGORY_ID,
+    notes: gEv.description || '',
+    reminderMinutes: null,
+    reminderFired: false,
+    contactId: null,
+    createdAt: new Date().toISOString(),
+    gcalImported: true,
+    gcalSourceCalendarId: calendarId,
+    gcalSourceEventId: gEv.id,
+    gcalAllDay: allDay,
+  };
+}
+
+async function pullEventsFromCalendar(token, calendarId, importWindow) {
+  const events = [];
+  let pageToken;
+  do {
+    const page = await listEventsPage(token, calendarId, importWindow, pageToken);
+    for (const gEv of page.items || []) {
+      if (gEv.status === 'cancelled') continue;
+      events.push(googleEventToOrbitEvent(gEv, calendarId));
+    }
+    pageToken = page.nextPageToken;
+  } while (pageToken);
+  return events;
+}
+
+async function importGoogleCalendarEvents(token) {
+  ensureImportCategory();
+  const importWindow = getImportWindow();
+  const calendars = await listImportableCalendars(token);
+  const imported = [];
+  for (const cal of calendars) {
+    const events = await pullEventsFromCalendar(token, cal.id, importWindow);
+    imported.push(...events);
+  }
+  state.events = state.events.filter((ev) => !ev.gcalImported).concat(imported);
+  saveJSON(STORAGE_KEYS.events, state.events);
+  state.sync.lastImportAt = Date.now();
+  persistSync();
+  refreshCurrentScreen();
+  if (state.screen === 'settings') renderSettings();
 }
 
 function getTokenClient() {
@@ -456,6 +552,21 @@ async function triggerSync(reason) {
   }
 }
 
+async function triggerCalendarImport(reason) {
+  if (!state.sync.calendarImport) return;
+  if (driveSession.importBusy) return;
+  driveSession.importBusy = true;
+  try {
+    const token = await ensureAccessToken();
+    if (!token) return;
+    await importGoogleCalendarEvents(token);
+  } catch (e) {
+    // best-effort background refresh; failures are silent and retried on the next lifecycle event
+  } finally {
+    driveSession.importBusy = false;
+  }
+}
+
 function formatRelativeTime(ts) {
   const diff = Date.now() - ts;
   if (diff < 30000) return 'just now';
@@ -495,6 +606,13 @@ function updateSyncUI() {
   calendarRow.classList.toggle('hidden', !connected);
   calendarNote.classList.toggle('hidden', !connected);
   calendarToggle.checked = state.sync.calendarSync;
+
+  const importRow = document.getElementById('row-calendar-import');
+  const importNote = document.getElementById('calendar-import-note');
+  const importToggle = document.getElementById('toggle-calendar-import');
+  importRow.classList.toggle('hidden', !connected);
+  importNote.classList.toggle('hidden', !connected);
+  importToggle.checked = state.sync.calendarImport;
 }
 
 function waitForGis(attempt) {
@@ -524,10 +642,18 @@ function initDriveSync() {
 }
 
 function wireSyncLifecycleEvents() {
-  window.addEventListener('online', () => { if (state.sync.connected) triggerSync('online'); });
-  window.addEventListener('focus', () => { if (state.sync.connected) triggerSync('focus'); });
+  window.addEventListener('online', () => {
+    if (state.sync.connected) triggerSync('online');
+    if (state.sync.calendarImport) triggerCalendarImport('online');
+  });
+  window.addEventListener('focus', () => {
+    if (state.sync.connected) triggerSync('focus');
+    if (state.sync.calendarImport) triggerCalendarImport('focus');
+  });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && state.sync.connected) triggerSync('visible');
+    if (document.hidden) return;
+    if (state.sync.connected) triggerSync('visible');
+    if (state.sync.calendarImport) triggerCalendarImport('visible');
   });
 }
 
@@ -550,6 +676,16 @@ function wireSyncSettings() {
       triggerSync('calendar-enable');
     } else {
       showToast('Stopped syncing to Google Calendar');
+    }
+  });
+  document.getElementById('toggle-calendar-import').addEventListener('change', (e) => {
+    state.sync.calendarImport = e.target.checked;
+    persistSync();
+    if (state.sync.calendarImport) {
+      showToast('Importing events from Google Calendar…');
+      triggerCalendarImport('import-enable');
+    } else {
+      showToast('Stopped importing from Google Calendar');
     }
   });
 }
@@ -878,7 +1014,7 @@ function renderEventPill(p) {
   if (p.kind === 'task') return renderTaskPill(p);
   const cat = getCategory(p.ev.category);
   const pill = document.createElement('div');
-  pill.className = 'event-pill';
+  pill.className = 'event-pill' + (p.ev.gcalImported ? ' is-imported' : '');
   pill.dataset.eventId = p.ev.id;
   const top = ((p.startMin - getDayStartHour() * 60) / 60) * getHourHeight();
   const height = Math.max(((p.endMin - p.startMin) / 60) * getHourHeight(), 26);
@@ -1005,6 +1141,7 @@ function attachPillMoveDrag(pill, p) {
   let duration = p.endMin - p.startMin;
 
   pill.addEventListener('pointerdown', (e) => {
+    if (p.ev.gcalImported) return;
     if (e.target.closest('.event-pill-resize-handle')) return;
     e.stopPropagation();
     dragging = true; moved = false;
@@ -1081,6 +1218,7 @@ function attachPillResizeDrag(pill, p) {
   let resizing = false, startY = 0, initialHeight = 0;
 
   handle.addEventListener('pointerdown', (e) => {
+    if (p.ev.gcalImported) return;
     e.stopPropagation();
     resizing = true;
     startY = e.clientY;
@@ -1526,16 +1664,25 @@ function wireContactCombobox() {
   });
 }
 
+function setEventFormReadOnly(readonly) {
+  document.querySelector('#modal-event .modal-sheet').classList.toggle('is-readonly', readonly);
+  document.querySelectorAll('#event-form input, #event-form select, #event-form textarea').forEach((el) => { el.disabled = readonly; });
+  document.querySelector('#modal-event button[type="submit"]').classList.toggle('hidden', readonly);
+  document.getElementById('event-readonly-note').classList.toggle('hidden', !readonly);
+}
+
 function openEventModal(eventId, options) {
   options = options || {};
   state.editingEventId = eventId || null;
   document.getElementById('event-form').reset();
-  document.getElementById('event-delete').classList.toggle('hidden', !eventId);
+  const ev = eventId ? state.events.find(e => e.id === eventId) : null;
+  const readonly = !!(ev && ev.gcalImported);
+  document.getElementById('event-delete').classList.toggle('hidden', !eventId || readonly);
+  setEventFormReadOnly(readonly);
 
   const reminderSelect = document.getElementById('event-reminder');
   if (eventId) {
-    const ev = state.events.find(e => e.id === eventId);
-    document.getElementById('event-modal-title').textContent = 'Edit event';
+    document.getElementById('event-modal-title').textContent = readonly ? 'View event' : 'Edit event';
     document.getElementById('event-title').value = ev.title;
     const start = new Date(ev.start), end = new Date(ev.end);
     document.getElementById('event-date').value = dateKey(start);
@@ -1580,6 +1727,7 @@ function wireEventForm() {
 
     if (state.editingEventId) {
       const ev = state.events.find(x => x.id === state.editingEventId);
+      if (ev.gcalImported) return;
       ev.title = title; ev.start = start.toISOString(); ev.end = end.toISOString();
       ev.category = state.selectedCategory; ev.notes = notes;
       if (ev.reminderMinutes !== reminderMinutes) ev.reminderFired = false;
@@ -1606,6 +1754,7 @@ function wireEventForm() {
     const id = state.editingEventId;
     confirmDialog("Delete this event? This can't be undone.", () => {
       const ev = state.events.find(e => e.id === id);
+      if (ev && ev.gcalImported) return;
       if (ev && ev.gcalEventId) {
         state.sync.pendingCalendarDeletes.push(ev.gcalEventId);
         persistSync();

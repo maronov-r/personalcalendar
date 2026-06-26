@@ -525,6 +525,10 @@ body.is-dragging-event .event-pill:not(.is-dragging) {
 }
 .event-pill.is-short .event-pill-resize-handle { display: none; }
 
+.event-pill.is-imported { opacity: 0.82; }
+.event-pill.is-imported .event-pill-resize-handle { display: none; }
+.event-pill.is-imported .event-pill-title::before { content: '🔒'; margin-right: 3px; font-size: 9px; }
+
 .day-head-task-chips {
   display: flex;
   flex-direction: column;
@@ -1329,6 +1333,11 @@ body.is-dragging-event .event-pill:not(.is-dragging) {
   flex-direction: column;
   animation: slideUp 240ms ease;
   overflow: hidden;
+}
+.modal-sheet.is-readonly .category-picker,
+.modal-sheet.is-readonly .contact-combobox {
+  pointer-events: none;
+  opacity: 0.65;
 }
 .modal-sheet-small {
   border-radius: 20px;

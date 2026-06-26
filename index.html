@@ -354,6 +354,17 @@
           </label>
         </div>
         <p class="settings-note hidden" id="calendar-sync-note">Orbit creates an "Orbit" calendar in your Google account and keeps it in sync with your events here. Edit or delete an event in Orbit and the change follows; editing directly in Google Calendar does not sync back.</p>
+        <div class="settings-row hidden" id="row-calendar-import">
+          <div class="settings-row-text">
+            <span class="settings-row-label">Import Google Calendar</span>
+            <span class="settings-row-sub">Bring in events from your other calendars (read-only).</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="toggle-calendar-import">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+        <p class="settings-note hidden" id="calendar-import-note">Orbit pulls in events from all your other Google calendars (1 month back to 6 months ahead) and shows them here as read-only — editing or deleting them isn't supported, change them in Google Calendar instead. Turning this off stops future imports but leaves already-imported events in place.</p>
       </div>
 
       <div class="settings-group" id="install-group">
@@ -402,6 +413,7 @@
           <button type="button" class="icon-btn" data-close-modal="modal-event">×</button>
         </div>
         <div class="modal-body">
+          <p class="settings-note hidden" id="event-readonly-note">Imported from Google Calendar — read-only. Edit or delete it directly in Google Calendar instead.</p>
           <label class="field-label" for="event-title">Title</label>
           <input class="field-input" id="event-title" type="text" placeholder="What's happening?" required>
 
