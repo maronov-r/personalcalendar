@@ -48,7 +48,7 @@ Once installed, Orbit runs full-screen and offline, with browser-native notifica
 
 ## Cross-device sync (optional)
 
-Orbit is local-first by default — nothing leaves your device unless you turn this on. If you want your calendar and contacts to follow you between your phone and computer, you can connect your own Google Drive. Orbit stores one file, `orbit-data.json`, in your Drive and keeps it in sync (last-write-wins — fine for one person on a couple of personal devices).
+Orbit is local-first by default — nothing leaves your device unless you turn this on. If you want your calendar and contacts to follow you between your phone and computer, you can connect your own Google Drive. Orbit stores one file, `orbit-data.json`, in your Drive and keeps it in sync (last-write-wins between two devices that both have real data — fine for one person on a couple of personal devices — except an empty device or empty backup never overwrites real data on the other side).
 
 Setting it up requires a few minutes in the Google Cloud Console, under your own Google account:
 

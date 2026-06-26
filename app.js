@@ -216,6 +216,14 @@ function buildSyncDoc() {
   };
 }
 
+function isEmptyDoc(doc) {
+  return !doc || (
+    (!doc.events || !doc.events.length) &&
+    (!doc.tasks || !doc.tasks.length) &&
+    (!doc.contacts || !doc.contacts.length)
+  );
+}
+
 function applyRemoteDoc(remote) {
   state.events = Array.isArray(remote.events) ? remote.events : [];
   state.tasks = Array.isArray(remote.tasks) ? remote.tasks : [];
@@ -561,10 +569,17 @@ async function triggerSync(reason, interactive) {
       persistSync();
     }
     const remote = await pullFromDrive(token, state.sync.driveFileId);
-    if (remote && typeof remote.updatedAt === 'number' && remote.updatedAt > state.sync.lastLocalChangeAt) {
+    const localDoc = buildSyncDoc();
+    const remoteEmpty = isEmptyDoc(remote);
+    const localEmpty = isEmptyDoc(localDoc);
+    if (remoteEmpty && !localEmpty) {
+      await pushToDrive(token, state.sync.driveFileId, localDoc);
+    } else if (localEmpty && !remoteEmpty) {
+      applyRemoteDoc(remote);
+    } else if (remote && typeof remote.updatedAt === 'number' && remote.updatedAt > state.sync.lastLocalChangeAt) {
       applyRemoteDoc(remote);
     } else {
-      await pushToDrive(token, state.sync.driveFileId, buildSyncDoc());
+      await pushToDrive(token, state.sync.driveFileId, localDoc);
     }
     if (state.sync.calendarSync) {
       try {
